@@ -14,9 +14,13 @@ class PayGate(BasePaymentProcessor):
   """
   PayGate payment processor.
   
-  For reference, see
-  Please add the link documentation here that you use to create the logic of your payment processor.
+  For reference, see the Swagger sent by AMA of the PPAP service:
+  Link to documentation:
+  - https://cloud.ama.gov.pt/index.php/s/5jKnbXuV3ajYQQ5
   
+  Or alternatively see the test environment swagger of the Optimistic Blue (the software house).
+  - https://lab.optimistic.blue/paygateWS/swagger/index.html
+
   The payment processor consists of a class with some methods and constants that must be implemented to complete the payment flow.
   the flow of a payment.
   
@@ -27,7 +31,13 @@ class PayGate(BasePaymentProcessor):
   3. After payment, the user is redirected to one of the success or failure callback pages
   4. On the successful callback page, we check if the payment was successful with handle_processor_response
   
-  
+  The payment processor is supposed to be configured as follows:
+  ```
+    paygate:
+      access_token: PwdX_XXXX_YYYY
+      api_url: https://lab.optimistic.blue/paygateWS
+  ```
+
   The following code shows the methods that must be implemented in this class:
   https://github.com/openedx/ecommerce/blob/3b1fcb0ef6658ad123da3cfb1d8ceb55e569708a/ecommerce/extensions/payment/processors/__init__.py#L20-L140
   
@@ -36,6 +46,8 @@ class PayGate(BasePaymentProcessor):
   # Here should be the required or returned constants that your payment processor needs to implement.
   # It's necessary to add the name of your payment processor.
   NAME = 'paygate'
+  # The title will be used in user-facing templates
+  TITLE = 'Paygate'
   CHECKOUTS_ENDPOINT = '/v1/checkouts'
   
   def __init__(self, site):
@@ -82,14 +94,17 @@ class PayGate(BasePaymentProcessor):
     successful.
 
     Arguments:
-        response (dict): Dictionary of parameters received from the payment processor.
+      response (dict): Dictionary of parameters received from the payment processor.
 
     Keyword Arguments:
-        basket (Basket): Basket being purchased via the payment processor.
+      basket (Basket): Basket being purchased via the payment processor.
+
+    Returns:
+      HandledProcessorResponse
 
     Raises:
-        GatewayError: Indicates a general error on the part of the processor.
-        Feel free to implement your own exceptions depended on your payment processor.
+      GatewayError: Indicates a general error on the part of the processor.
+      Feel free to implement your own exceptions depended on your payment processor.
     """
     currency = response.get('currency')
     total = Decimal(response.get('total'))
