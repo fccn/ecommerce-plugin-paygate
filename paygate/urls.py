@@ -7,5 +7,5 @@ from .views import PaygatePaymentResponseView
 # http://ecommerce_root_url/payment/paygate/notify/
 
 urlpatterns = [
-    path("notify/", PaygatePaymentResponseView.as_view(), name="notify"),
+    path(r'^payment/paygate/notify/$', PaygatePaymentResponseView.as_view(), name="notify"),
 ]
