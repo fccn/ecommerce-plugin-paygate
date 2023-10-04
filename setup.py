@@ -14,13 +14,14 @@ setup(
     name='ecommerce-plugin-paygate',
     description='Ecommerce plugin paygate payment processor backend plugin',
     version='0.1.0',
-    author='eduNEXT',
-    author_email='contact@edunext.co',
+    author='FCCN',
+    author_email='info@nau.edu.pt',
     long_description=f'{README}\n\n{CHANGELOG}',
     long_description_content_type='text/x-rst',
-    url='https://github.com/edunext/ecommerce-plugin-paygate',
+    url='https://github.com/fccn/ecommerce-plugin-paygate',
     include_package_data=True,
     zip_safe=False,
+    license="AGPL 3.0",
     keywords='Django openedx openedx-plugin ecommerce paygate',
     classifiers=[
         'Development Status :: 3 - Alpha',
@@ -40,7 +41,7 @@ setup(
     ],
     entry_points={
         'ecommerce': [
-            'paygate = paygate.apps:PayGatePayConfig',
+            'paygate = ecommerce_plugin_paygate.apps:PayGateConfig',
         ],
     },
 )

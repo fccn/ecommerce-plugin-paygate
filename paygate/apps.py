@@ -9,6 +9,7 @@ class PayGateConfig(AppConfig):
     Configuration for the PayGate payment processor Django application.
     """
     name = 'paygate'
+    verbose_name = 'Django Ecommerce plugin for Paygate app.'
     plugin_app = {
         'url_config': {
             'ecommerce': {

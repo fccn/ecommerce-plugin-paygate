@@ -1,114 +1,551 @@
 """
 PayGate payment processor.
 """
-
+import re
+import base64
+import json
 import logging
 from decimal import Decimal
+from django.conf import settings
 
-from ecommerce.extensions.payment.processors import BasePaymentProcessor, HandledProcessorResponse
+import requests
+import simplejson.errors
+from django.urls import reverse
+from ecommerce.core.url_utils import get_ecommerce_url
+from ecommerce.extensions.payment.processors import (
+    BasePaymentProcessor,
+    HandledProcessorResponse,
+)
+from oscar.apps.payment.exceptions import GatewayError
+from oscar.core.loading import get_model
 
 logger = logging.getLogger(__name__)
+ProductClass = get_model("catalogue", "ProductClass")
 
 
 class PayGate(BasePaymentProcessor):
-  """
-  PayGate payment processor.
-  
-  For reference, see
-  Please add the link documentation here that you use to create the logic of your payment processor.
-  
-  The payment processor consists of a class with some methods and constants that must be implemented to complete the payment flow.
-  the flow of a payment.
-  
-  The flow of the payment process:
-
-  1. Start a payment with get_transaction_parameters
-  2. Redirect the user to the payment page
-  3. After payment, the user is redirected to one of the success or failure callback pages
-  4. On the successful callback page, we check if the payment was successful with handle_processor_response
-  
-  
-  The following code shows the methods that must be implemented in this class:
-  https://github.com/openedx/ecommerce/blob/3b1fcb0ef6658ad123da3cfb1d8ceb55e569708a/ecommerce/extensions/payment/processors/__init__.py#L20-L140
-  
-  """
-  
-  # Here should be the required or returned constants that your payment processor needs to implement.
-  # It's necessary to add the name of your payment processor.
-  NAME = 'paygate'
-  CHECKOUTS_ENDPOINT = '/v1/checkouts'
-  
-  def __init__(self, site):
     """
-    Constructs a new instance of the paygate processor, this constructor will be used to fetch the information that it's necessary to apply
-    the logic, as minimun this should retrieve the payment page url that it's used to redirect the user to the payment page.
+    PayGate payment processor.
 
-    Raises:
-      KeyError: If no settings configured for this payment processor
-      AttributeError: If LANGUAGE_CODE setting is not set.
-    """
-    super().__init__(site)
-    configuration = self.configuration
-    self.payment_page_url = configuration['payment_page_url']
-    self.some_value = configuration['some_value']
-  
-  def get_transaction_parameters(self, basket, **kwargs):
-    """
-    This method returns the parameters needed by the payment processor, with these parameters the processor will have the context of the transaction, this function returns these parameters as a dictionary.
-    Feel free to add the necessary logic to obtain the data that your payment processor needs, additionally you must send the variable payment_page_url with the url of your payment processor, Hgre you will also send the callback pages, so your payment processor will 
-    know where to redirect you when a transaction is executed, to see in which variable you should send them, check the documentation of 
-    your payment processor.
-    
-    Arguments:
-      basket (Basket): The basket of products being purchased.
-      kwargs: Key arguments.
+    For reference, see the Swagger sent by AMA of the PPAP service:
+    Link to documentation:
+    - https://cloud.ama.gov.pt/index.php/s/5jKnbXuV3ajYQQ5
 
-    Returns:
-      dict: Payment-processor-specific parameters required to complete a transaction, including a signature.
-    """
-    parameters = {
-      'payment_page_url': self.payment_page_url,
-      'order_number': basket.order_number,
-      'some_required_values': self.some_value
-    }
-    return parameters
-  
-  def handle_processor_response(self, response, basket=None):
-    """
-    Verify that the payment was successfully processed -- because Trust but Verify.
-    If payment did not succeed, raise GatewayError and log error.
-    Keep in mind that your response will come with different information, so you must modify the fields
-    which are obtained from the response and checked the logic that it's used to verify if the payment was
-    successful.
+    Or alternatively see the test environment swagger of the Optimistic Blue (the software house).
+    - https://lab.optimistic.blue/paygateWS/swagger/index.html
 
-    Arguments:
-        response (dict): Dictionary of parameters received from the payment processor.
+    The payment processor consists of a class with some methods and constants that must be implemented to complete the payment flow.
+    the flow of a payment.
 
-    Keyword Arguments:
-        basket (Basket): Basket being purchased via the payment processor.
+    The flow of the payment process:
 
-    Raises:
-        GatewayError: Indicates a general error on the part of the processor.
-        Feel free to implement your own exceptions depended on your payment processor.
+    1. Start a payment with get_transaction_parameters
+    2. Redirect the user to the payment page
+    3. After payment, the user is redirected to one of the success or failure callback pages
+    4. When the user has payed with success, the Paygate calls the server callback, and we mark
+    the payment has successful by placing an order or the basket
+    5. Paygate redirects the user to the successful callback page, we check if the basket already
+    as an order
+
+    The payment processor is supposed to be configured as follows:
+    ```
+      paygate:
+        access_token: PwdX_XXXX_YYYY
+        api_checkout_url: https://lab.optimistic.blue/paygateWS/api/CheckOut
+        api_back_office_search_transactions: https://lab.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions
+        api_basic_auth_user: username
+        api_basic_auth_pass: password
+        cancel_checkout_path: /checkout/cancel-checkout/ # optional
+        error_path: /checkout/error/ # optional
+        title: Paygate # optional
+        payment_types: ["VISA", "MASTERCARD", "AMEX", "PAYPAL", "MBWAY", "REFMB", "DUC"]
+    ```
+
+    The `cancel_checkout_path`  and `error_path` can be optional and default to
+    `PAYMENT_PROCESSOR_CANCEL_PATH` and `PAYMENT_PROCESSOR_ERROR_PATH`.
+
+
+    The following code shows the methods that must be implemented in this class:
+    https://github.com/openedx/ecommerce/blob/3b1fcb0ef6658ad123da3cfb1d8ceb55e569708a/ecommerce/extensions/payment/processors/__init__.py#L20-L140
+
     """
-    currency = response.get('currency')
-    total = Decimal(response.get('total'))
-    transaction_id = response.get('transaction_id')
-    card_number = response.get('card_number', '')
-    card_type = response.get('card_type', '')
-    
-    return HandledProcessorResponse(
-      transaction_id=transaction_id,
-      total=total,
-      currency=currency,
-      card_number=card_number,
-      card_type=card_type
+
+    # Here should be the required or returned constants that your payment processor needs to implement.
+    # It's necessary to add the name of your payment processor.
+    NAME = "paygate"
+
+    # By default if there is only a payment gateway configured, we don't show
+    # "Checkout with Paygate".
+    # If you want to override the default `TITLE` you can add the `title` configuration.
+    # TITLE = "Paygate"
+
+    CHECKOUTS_ENDPOINT = "/v1/checkouts"
+
+    # By default the calls to Paygate Checkout API has a time of 10 seconds
+    API_REQUEST_TIMEOUT_SECONDS = 10
+
+    DEFAULT_API_CHECKOUT_URL = (
+        "https://lab.optimistic.blue/paygateWS/api/CheckOut"
     )
-  
-  def issue_credit(self, order_number, basket, reference_number, amount, currency):
-    """
-    This is currently not implemented.
-    """
-    logger.exception(
-        'PayGate processor cannot issue credits or refunds from Open edX ecommerce.'
-    )
+    # the default timeout that we wait to have a response of the Paygate Checkout API method
+    DEFAULT_API_CHECKOUT_REQUEST_TIMEOUT_SECONDS = 10
+
+    DEFAULT_API_BACK_OFFICE_SEARCH_TRANSACTIONS = "https://lab.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions"
+    DEFAULT_API_BACK_OFFICE_SEARCH_TRANSACTIONS_TIMEOUT_SECONDS = 10
+
+    def __init__(self, site):
+        """
+        Constructs a new instance of the paygate processor, this constructor will be used to fetch the information that it's necessary to apply
+        the logic, as minimun this should retrieve the payment page url that it's used to redirect the user to the payment page.
+
+        Raises:
+          KeyError: If no settings configured for this payment processor
+          AttributeError: If LANGUAGE_CODE setting is not set.
+        """
+        super().__init__(site)
+        self.access_token = self.configuration["access_token"]
+        self.merchant_code = self.configuration["merchant_code"]
+        self.api_basic_auth_user = self.configuration['api_basic_auth_user']
+        self.api_basic_auth_pass = self.configuration['api_basic_auth_pass']
+        self.api_checkout_url = self.configuration.get(
+            "api_checkout_url", self.DEFAULT_API_CHECKOUT_URL
+        )
+        self.api_checkout_request_timeout_seconds = self.configuration.get(
+            "api_checkout_request_timeout_seconds",
+            self.DEFAULT_API_CHECKOUT_REQUEST_TIMEOUT_SECONDS,
+        )
+        self.api_back_office_search_transactions = self.configuration.get(
+            "api_back_office_search_transactions",
+            self.DEFAULT_API_BACK_OFFICE_SEARCH_TRANSACTIONS,
+        )
+        self.api_back_office_search_transactions_timeout_seconds = (
+            self.configuration.get(
+                "api_back_office_search_transactions_timeout_seconds",
+                self.DEFAULT_API_BACK_OFFICE_SEARCH_TRANSACTIONS_TIMEOUT_SECONDS,
+            )
+        )
+        self.payment_types = self.configuration.get(
+            "payment_types",
+            ["VISA", "MASTERCARD", "PAYPAL", "MBWAY", "REFMB"],  # etc...
+        )
+
+        # By default if there is only a payment gateway configured, we don't show
+        # "Checkout with Paygate".
+        # If you want to override the default `TITLE` you can add the `title` to this payment
+        # processor configuration.
+        partner_short_code = self.site.siteconfiguration.partner.short_code
+        payment_processors_config_count = len(
+            settings.PAYMENT_PROCESSOR_CONFIG[partner_short_code.lower()]
+        )
+        show_title_default = payment_processors_config_count > 1
+        self.TITLE = self.configuration.get(
+            "title", "Paygate" if show_title_default else None
+        )
+
+    @property
+    def callback_server_allowed_networks(self):
+        return self.configuration.get("callback_server_allowed_networks", None)
+
+    @property
+    def error_url(self):
+        """
+        The destination error URL.
+
+        If some error is being raised by the Paygate software the user will be redirected to the
+        failure callback.
+
+        The failure callback should then redirect the user to this url.
+        By default it will redirect the user to the upstream Open edX ecommerce checkout error
+        page.
+        """
+        return get_ecommerce_url(
+            self.configuration.get("error_path", reverse("checkout:error"))
+        )
+
+    @property
+    def failure_url(self):
+        """
+        Same as the error_url property
+        """
+        return self.error_url
+
+    @property
+    def cancel_url(self):
+        """
+        The destination cancel URL.
+
+        If the user decides to cancel the payment inside the Paygate software, he will be
+        redirected to the "callback cancel" that will be redirected inside this plugin to the
+        Open edX Ecommerce "cancel-checkout" view.
+        """
+        return get_ecommerce_url(
+            self.configuration.get(
+                "cancel_checkout_path", reverse("checkout:cancel-checkout")
+            )
+        )
+
+    def get_transaction_parameters(
+        self, basket, request=None, use_client_side_checkout=False, **kwargs
+    ):
+        """
+        Generate a dictionary of signed parameters required for this processor to complete a transaction.
+        This method returns the parameters needed by the payment processor, with these parameters the processor will have the context of the transaction, this function returns these parameters as a dictionary.
+        Feel free to add the necessary logic to obtain the data that your payment processor needs, additionally you must send the variable payment_page_url with the url of your payment processor, Hgre you will also send the callback pages, so your payment processor will
+        know where to redirect you when a transaction is executed, to see in which variable you should send them, check the documentation of
+        your payment processor.
+
+        Arguments:
+          basket (Basket): The basket of products being purchased.
+          request (Request, optional): A Request object which can be used to construct an absolute URL in
+              cases where one is required.
+          use_client_side_checkout (bool, optional): Determines if client-side checkout should be used.
+          **kwargs: Additional parameters.
+
+        Returns:
+          dict: Payment-processor-specific parameters required to complete a transaction, including a signature.
+            At a minimum, this dict must include a `payment_page_url` indicating the location of the processor's hosted payment page.
+        """
+        logger.info(f"Paygate: started payment for basket={basket.id}")
+
+        # Create PPR early to obtain an ID that can be passed to the return urls
+        success_payment_processor_response = self.record_processor_response(
+            {}, transaction_id=None, basket=basket
+        )
+
+        callback_server_url = get_ecommerce_url(
+            reverse("ecommerce_plugin_paygate:callback_server")
+        )
+        callback_success_url = get_ecommerce_url(
+            reverse("ecommerce_plugin_paygate:callback_success")
+        )
+        # We redirect first to some paygate views then only after to the upstream views.
+        # With this strategy we know if the user have been redirected from Paygate or by
+        # Ecommerce internally.
+        callback_cancel_url = get_ecommerce_url(
+            reverse("ecommerce_plugin_paygate:callback_cancel")
+        )
+        callback_failure_url = get_ecommerce_url(
+            reverse("ecommerce_plugin_paygate:callback_failure")
+        )
+
+        callback_server_parms = []
+
+        single_seat = self.get_single_seat(basket)
+        if single_seat:
+            course_id = single_seat.course_id
+
+        # include course_id on the callback server params
+        if course_id:
+            callback_server_parms.append(
+                {
+                    "key": "course_id",
+                    "value": course_id,
+                }
+            )
+
+        order_number = basket.order_number
+
+        description = "\n".join([line.product.title for line in basket.lines.all()])
+        language = request.LANGUAGE_CODE.split("-")[0]
+
+        paygate_checkout_request_data = {
+            "ACCESS_TOKEN": self.access_token,
+            "MERCHANT_CODE": self.merchant_code,
+            "IS_RECURRENT": False,
+            "CLIENT_NAME": basket.owner.full_name,
+            # "ADDRESS_LINE_1": basket.order.billing_address.line1,
+            # "ADDRESS_LINE_2": basket.order.billing_address.line2,
+            # "CITY": basket.order.billing_address.city,
+            # "POSTAL_CODE": basket.order.billing_address.postcode,
+            # "STATE": basket.order.billing_address.state,
+            # "COUNTRY_CODE": basket.order.billing_address.country,
+            "EMAIL": basket.owner.email,
+            "LANGUAGE": language,
+            # "WIDGET_MESSAGE": "string", # old field no longer in use.
+            "PAYMENT_REF": order_number,  # the most important field, it is to identify the transaction.
+            "TRANSACTION_DESC": description,
+            "CURRENCY": basket.currency,  # should be EUR
+            "TOTAL_AMOUNT": basket.total_incl_tax,
+            "PAYMENT_TYPES": self.payment_types,
+            # 'REFMB_START_DATE': '2023-09-20T16:27:34.518Z',
+            # 'REFMB_END_DATE': '2023-09-20T16:27:34.518Z',
+            # 'REFMB_MIN_AMOUNT': 0,
+            # 'REFMB_MAX_AMOUNT': 0,
+            "CALLBACK_SUCCESS_URL": callback_success_url,
+            "CALLBACK_CANCEL_URL": callback_cancel_url,
+            "CALLBACK_FAILURE_URL": callback_failure_url,
+            "CALLBACK_SERVER_URL": callback_server_url,
+            "CALLBACK_SERVER_PARMS": callback_server_parms,
+        }
+        response_data = self._make_api_json_request(
+            self.api_checkout_url,
+            method="POST",
+            data=paygate_checkout_request_data,
+            basket=basket,
+            timeout=self.api_checkout_request_timeout_seconds,
+            basic_auth_user=self.api_basic_auth_user,
+            basic_auth_pass=self.api_basic_auth_pass,
+        )
+
+        # the URL to redirect the user
+        payment_page_url = self._parse_checkout_response(response_data, "URL", basket)
+
+        # boolean reporting transaction success/failure
+        success = bool(self._parse_checkout_response(response_data, "Success", basket))
+
+        # transaction status code
+        return_code = self._parse_checkout_response(response_data, "ReturnCode", basket)
+
+        # client friendly error message, if applicable
+        short_return_message = self._parse_checkout_response(
+            response_data, "ShortReturnMessage", basket
+        )
+
+        # Technical error message
+        long_return_message = self._parse_checkout_response(
+            response_data, "LongReturnMessage", basket
+        )
+
+        # SessionToken for use in subsequent operations within the same payment session
+        session_token = self._parse_checkout_response(
+            response_data, "SessionToken", basket
+        )
+
+        payment_id = self._parse_checkout_response(response_data, "PaymentID", basket)
+
+        if not success:
+            logger.warning(
+                f"Paygate checkout: not successed! "
+                f"for basket={basket.id} "
+                f"payment_id={payment_id} "
+                f"return code={return_code} "
+                f"shor error message={short_return_message} "
+                f"long error message={long_return_message}"
+            )
+
+            self._raise_api_error(
+                self._raise_api_error(
+                    "Not success", response_data=response_data, basket=basket
+                )
+            )
+
+        # Save payment processor response
+        success_payment_processor_response.transaction_id = order_number
+        success_payment_processor_response.response = response_data
+        success_payment_processor_response.save()
+
+        logger.info(
+            f"Paygate payment: basket={basket.id} obtained paygate payment id={payment_id}"
+        )
+
+        parameters = {
+            "payment_page_url": payment_page_url,
+            "payment_form_data": {
+                "SessionToken": session_token,
+            },
+            # 'order_number': basket.order_number,
+        }
+        return parameters
+
+    def _parse_checkout_response(self, response_data, field, basket=None):
+        """
+        Parse a single `field` from the response received from the Paygate Checkout API.
+        """
+        try:
+            value = response_data[field]
+        except KeyError:
+            dump = json.dumps(response_data)
+            message = f"Could not parse '{field}' field from response: content={dump}"
+            self._raise_api_error(message, response_data=response_data, basket=basket)
+        return value
+
+    @staticmethod
+    def get_single_seat(basket):
+        """
+        Return the first product encountered in the basket with the product
+        class of 'seat'.  Return None if no such products were found.
+        """
+        try:
+            seat_class = ProductClass.objects.get(slug="seat")
+        except ProductClass.DoesNotExist:
+            # this occurs in test configurations where the seat product class is not in use
+            return None
+
+        for line in basket.lines.all():
+            product = line.product
+            if product.get_product_class() == seat_class:
+                return product
+
+        return None
+
+    def handle_processor_response(self, response, basket=None):
+        """
+        Verify that the payment was successfully processed -- because Trust but Verify.
+        If payment did not succeed, raise GatewayError and log error.
+        Keep in mind that your response will come with different information, so you must modify the fields
+        which are obtained from the response and checked the logic that it's used to verify if the payment was
+        successful.
+
+        Arguments:
+          response (dict): Dictionary of parameters received from the payment processor.
+
+        Keyword Arguments:
+          basket (Basket): Basket being purchased via the payment processor.
+
+        Returns:
+          HandledProcessorResponse
+
+        Raises:
+          GatewayError: Indicates a general error on the part of the processor.
+          Feel free to implement your own exceptions depended on your payment processor.
+        """
+
+        # Example: 1.00EUR
+        payment_value = response.get("paymentValue")
+
+        # Get total payed
+        total = Decimal(" ".join(re.findall("[0-9.]+", payment_value)))
+
+        # The currency isn't on a separate field
+        currency = " ".join(re.findall("[a-zA-Z]+", response.get("paymentValue")))
+        currency = currency if currency else basket.currency
+
+        # Save the transaction ID returned by the payment processor.
+        # It isn't the Internal Paygate Payment ID, but the upstream id depending of the payment
+        # type choosen by the user inside the Paygate.
+        transaction_id = response.get("transaction_id")
+
+        # Save only a mask of the card
+        card_number = response.get("card_masked_pan", "")
+
+        # Payment type (VISA, MASTERCARD, PAYPAL, MBWAY, REFMB,...)
+        # We use the `card_type` to save the payment type used.
+        card_type = response.get("payment_type_code", "")
+
+        if not self._check_if_basket_has_been_payed_in_paygate(basket):
+            raise GatewayError("Paygate couldn't double check if basket has been payed")
+
+        return HandledProcessorResponse(
+            transaction_id=transaction_id,
+            total=total,
+            currency=currency,
+            card_number=card_number,
+            card_type=card_type,
+        )
+
+    def _check_if_basket_has_been_payed_in_paygate(self, basket):
+        """
+        Search Paygate transactions for the basket that has been completed, it should be a single
+        transaction on that state. If true we double check that the transaction has been completed
+        with success and the user as payed the basket.
+        """
+        paygate_back_office_search_transactions_data = {
+            "ACCESS_TOKEN": self.access_token,
+            "MERCHANT_CODE": self.merchant_code,
+            # since we are searching by order_number we should receive a single response
+            "PAYMENT_REF": basket.order_number,
+            # search only completed transactions
+            "STATUS_CODE": "C",
+            # Sorting parameter. Sort results ('ASC'ending or 'DESC'ending)
+            # For this call we just need to know if there is a single one.
+            "SORT_DIRECTION": "ASC", 
+            # Sorting parameter. Sort results by the specified column name.
+            "SORT_COLUMN": "PAYMENT_REF",
+            # Paging parameter. How many rows to retrieve from the result set.
+            "NEXT_ROWS": 2,
+            # Paging parameter. How many rows to skip from the result set
+            "OFFSET_ROWS": 0,
+        }
+        response_data = self._make_api_json_request(
+            self.api_back_office_search_transactions,
+            method="POST",
+            data=paygate_back_office_search_transactions_data,
+            basket=basket,
+            timeout=self.api_back_office_search_transactions_timeout_seconds,
+            basic_auth_user=self.api_basic_auth_user,
+            basic_auth_pass=self.api_basic_auth_pass,
+        )
+        # it should be a single item that have been payed
+        if len(response_data) == 1:
+            paygate_transaction = response_data[0]
+            return (
+                (paygate_transaction.get("MERCHANT_CODE") == self.merchant_code)
+                and (paygate_transaction.get("STATUS_CODE") == "C")
+                and (paygate_transaction.get("PAYMENT_REF") == basket.order_number)
+            )
+        return False
+
+    def issue_credit(self, order_number, basket, reference_number, amount, currency):
+        """
+        This is currently not implemented.
+        """
+        logger.exception(
+            "PayGate processor cannot issue credits or refunds from Open edX ecommerce."
+        )
+
+    def _make_api_json_request(
+        self, url, method="GET", data=None, basket=None, timeout=10, basic_auth_user=None, basic_auth_pass=None
+    ):
+        """
+        Execute an API call to the Paygate using an HTTP `method` with some `data` as payload to an
+        ecommerce `basket`.
+        """
+        requests_func = getattr(requests, method.lower())
+
+        # All calls to Paygate require basic authentication has the 1st layer of security.
+        headers = {}
+        if basic_auth_pass and basic_auth_pass:
+            encoded_auth = base64.b64encode(
+                "{}:{}".format(
+                    basic_auth_user, basic_auth_pass
+                ).encode()
+            ).decode()
+            headers = {"Authorization": "Basic {}".format(encoded_auth)}
+        
+        # Add standard request data
+        request_data = {}
+        request_data.update(data)
+
+        logger.info(f"Paygate calling '{url}' with payload {request_data}")
+        try:
+            # pylint: disable=not-callable
+            response = requests_func(
+                url,
+                json=request_data,
+                headers=headers,
+                timeout=timeout,
+            )
+        except requests.exceptions.Timeout:
+            self._raise_api_error("API timeout", None, {}, basket)
+
+        try:
+            response_data = response.json()
+        except (json.JSONDecodeError, simplejson.errors.JSONDecodeError):
+            self._raise_api_error(
+                "Could not parse JSON content from response", response, {}, basket
+            )
+        if response.status_code != 200:
+            self._raise_api_error(
+                "Invalid API response", response, response_data, basket
+            )
+        return response_data
+
+    def _raise_api_error(self, message, response=None, response_data=None, basket=None):
+        error_response = None
+        if response is not None:
+            error_response = {
+                "status_code": response.status_code,
+                "content": response.content.decode(),
+                "data": response_data,
+            }
+        error = {"message": message, "response": error_response}
+        entry = self.record_processor_response(
+            error, transaction_id=basket.order_number if basket else None, basket=basket
+        )
+        logger.error(
+            "Failed request to Paygate API for basket [%d], response stored in entry [%d].",
+            basket.id if basket else None,
+            entry.id,
+            exc_info=True,
+        )
+        raise GatewayError(error)
