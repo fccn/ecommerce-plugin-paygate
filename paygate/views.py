@@ -23,6 +23,9 @@ from oscar.core.loading import get_class, get_model
 from .ip import *
 from .processors import PayGate
 
+UserAddress = get_model("address", "UserAddress")
+BillingAddress = get_model('order', 'BillingAddress')
+
 # from oscar.apps.partner import strategy
 
 
@@ -99,6 +102,40 @@ class PaygateCallbackBaseResponseView(
         else:
             logger.error("Missing 'payment_ref' parameter from request")
             return None, None
+
+    def create_order(self, request, basket, billing_address=None):
+        """
+        Overwrite the Open edX Ecommerce `create_order` method.
+        If the `billing_address` is not defined it will use the address marked as the one to be
+        used as the default/preferred for billing address on the user account.
+        """
+        if not billing_address:
+            address_for_billing = PaygateCallbackBaseResponseView._get_user_billing_address(basket.owner)
+            # Copy Address from an UserAddress to a BillingAddress
+            billing_address = BillingAddress(
+                title=address_for_billing.title,
+                first_name=address_for_billing.first_name,
+                last_name=address_for_billing.last_name,
+                line1=address_for_billing.line1,
+                line2=address_for_billing.line2,
+                line3=address_for_billing.line3,
+                line4=address_for_billing.line4,
+                state=address_for_billing.state,
+                postcode=address_for_billing.postcode,
+                country=address_for_billing.country,
+            )
+        super().create_order(request, basket, billing_address=billing_address)
+    
+    @staticmethod
+    def _get_user_billing_address(user):
+        """
+        Get an user billing address, meaning it will be the address that user has marked
+        as the one that should be used for billing
+        """
+        try:
+            return user.addresses.get(is_default_for_billing=True)
+        except UserAddress.DoesNotExist:
+            return None
 
 
 class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
