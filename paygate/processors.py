@@ -52,14 +52,18 @@ class PayGate(BasePaymentProcessor):
     ```
       paygate:
         access_token: PwdX_XXXX_YYYY
+        merchant_code: NAU
         api_checkout_url: https://lab.optimistic.blue/paygateWS/api/CheckOut
+        api_checkout_req_timeout_sec: 10 # optional
         api_back_search_transactions: https://lab.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions
+        api_back_search_transactions_timeout_seconds: 10 # optional
         api_basic_auth_user: username
         api_basic_auth_pass: password
         cancel_checkout_path: /checkout/cancel-checkout/ # optional
         error_path: /checkout/error/ # optional
         title: PayGate # optional
         payment_types: ["VISA", "MASTERCARD", "AMEX", "PAYPAL", "MBWAY", "REFMB", "DUC"]
+
     ```
 
     The `cancel_checkout_path`  and `error_path` can be optional and default to
