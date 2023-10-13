@@ -127,7 +127,7 @@ class PayGate(BasePaymentProcessor):
         )
         self.payment_types = self.configuration.get(
             "payment_types",
-            ["VISA", "MASTERCARD", "PAYPAL", "MBWAY", "REFMB"],  # etc...
+            ["VISA", "MASTERCARD", "AMEX", "PAYPAL", "MBWAY", "REFMB", "DUC"],  # etc...
         )
 
         # By default if there is only a payment gateway configured, we don't show
