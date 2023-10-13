@@ -43,9 +43,9 @@ class PayGate(BasePaymentProcessor):
     1. Start a payment with get_transaction_parameters
     2. Redirect the user to the payment page
     3. After payment, the user is redirected to one of the success or failure callback pages
-    4. When the user has payed with success, the Paygate calls the server callback, and we mark
+    4. When the user has payed with success, the PayGate calls the server callback, and we mark
     the payment has successful by placing an order or the basket
-    5. Paygate redirects the user to the successful callback page, we check if the basket already
+    5. PayGate redirects the user to the successful callback page, we check if the basket already
     as an order
 
     The payment processor is supposed to be configured as follows:
@@ -58,7 +58,7 @@ class PayGate(BasePaymentProcessor):
         api_basic_auth_pass: password
         cancel_checkout_path: /checkout/cancel-checkout/ # optional
         error_path: /checkout/error/ # optional
-        title: Paygate # optional
+        title: PayGate # optional
         payment_types: ["VISA", "MASTERCARD", "AMEX", "PAYPAL", "MBWAY", "REFMB", "DUC"]
     ```
 
@@ -76,17 +76,17 @@ class PayGate(BasePaymentProcessor):
     NAME = "paygate"
 
     # By default if there is only a payment gateway configured, we don't show
-    # "Checkout with Paygate".
+    # "Checkout with PayGate".
     # If you want to override the default `TITLE` you can add the `title` configuration.
-    # TITLE = "Paygate"
+    # TITLE = "PayGate"
 
     CHECKOUTS_ENDPOINT = "/v1/checkouts"
 
-    # By default the calls to Paygate Checkout API has a time of 10 seconds
+    # By default the calls to PayGate Checkout API has a time of 10 seconds
     API_REQUEST_TIMEOUT_SECONDS = 10
 
     DEFAULT_API_CHECKOUT_URL = "https://lab.optimistic.blue/paygateWS/api/CheckOut"
-    # the default timeout that we wait to have a response of the Paygate Checkout API method
+    # the default timeout that we wait to have a response of the PayGate Checkout API method
     DEFAULT_API_CHECKOUT_REQUEST_TIMEOUT_SECONDS = 10
 
     DEFAULT_API_BACK_SEARCH_TRANSACTIONS = (
@@ -131,7 +131,7 @@ class PayGate(BasePaymentProcessor):
         )
 
         # By default if there is only a payment gateway configured, we don't show
-        # "Checkout with Paygate".
+        # "Checkout with PayGate".
         # If you want to override the default `TITLE` you can add the `title` to this payment
         # processor configuration.
         partner_short_code = self.site.siteconfiguration.partner.short_code
@@ -140,7 +140,7 @@ class PayGate(BasePaymentProcessor):
         )
         show_title_default = payment_processors_config_count > 1
         self.TITLE = self.configuration.get(
-            "title", "Paygate" if show_title_default else None
+            "title", "PayGate" if show_title_default else None
         )
 
     @property
@@ -155,7 +155,7 @@ class PayGate(BasePaymentProcessor):
         """
         The destination error URL.
 
-        If some error is being raised by the Paygate software the user will be redirected to the
+        If some error is being raised by the PayGate software the user will be redirected to the
         failure callback.
 
         The failure callback should then redirect the user to this url.
@@ -178,7 +178,7 @@ class PayGate(BasePaymentProcessor):
         """
         The destination cancel URL.
 
-        If the user decides to cancel the payment inside the Paygate software, he will be
+        If the user decides to cancel the payment inside the PayGate software, he will be
         redirected to the "callback cancel" that will be redirected inside this plugin to the
         Open edX Ecommerce "cancel-checkout" view.
         """
@@ -219,7 +219,7 @@ class PayGate(BasePaymentProcessor):
             including a signature. At a minimum, this dict must include a `payment_page_url`
             indicating the location of the processor's hosted payment page.
         """
-        logger.info("Paygate: started payment for basket {}", basket.id)
+        logger.info("PayGate: started payment for basket {}", basket.id)
 
         # Create PPR early to obtain an ID that can be passed to the return urls
         success_payment_processor_response = self.record_processor_response(
@@ -319,7 +319,7 @@ class PayGate(BasePaymentProcessor):
         if not success:
             logger.warning(
                 (
-                    "Paygate checkout: not successed! "
+                    "PayGate checkout: not successed! "
                     "for basket={} "
                     "payment_id={} "
                     "return code={} "
@@ -345,7 +345,7 @@ class PayGate(BasePaymentProcessor):
         success_payment_processor_response.save()
 
         logger.info(
-            "Paygate payment: basket={} obtained paygate payment id={}",
+            "PayGate payment: basket={} obtained paygate payment id={}",
             basket.id,
             payment_id,
         )
@@ -360,7 +360,7 @@ class PayGate(BasePaymentProcessor):
 
     def _parse_checkout_response(self, response_data, field, basket=None):
         """
-        Parse a single `field` from the response received from the Paygate Checkout API.
+        Parse a single `field` from the response received from the PayGate Checkout API.
         """
         try:
             value = response_data[field]
@@ -422,8 +422,8 @@ class PayGate(BasePaymentProcessor):
         currency = currency if currency else basket.currency
 
         # Save the transaction ID returned by the payment processor.
-        # It isn't the Internal Paygate Payment ID, but the upstream id depending of the payment
-        # type choosen by the user inside the Paygate.
+        # It isn't the Internal PayGate Payment ID, but the upstream id depending of the payment
+        # type choosen by the user inside the PayGate.
         transaction_id = response.get("transaction_id")
 
         # Save only a mask of the card
@@ -434,7 +434,7 @@ class PayGate(BasePaymentProcessor):
         card_type = response.get("payment_type_code", "")
 
         if not self._check_if_basket_has_been_payed_in_paygate(basket):
-            raise GatewayError("Paygate couldn't double check if basket has been payed")
+            raise GatewayError("PayGate couldn't double check if basket has been payed")
 
         return HandledProcessorResponse(
             transaction_id=transaction_id,
@@ -446,7 +446,7 @@ class PayGate(BasePaymentProcessor):
 
     def _check_if_basket_has_been_payed_in_paygate(self, basket):
         """
-        Search Paygate transactions for the basket that has been completed, it should be a single
+        Search PayGate transactions for the basket that has been completed, it should be a single
         transaction on that state. If true we double check that the transaction has been completed
         with success and the user as payed the basket.
         """
@@ -507,12 +507,12 @@ class PayGate(BasePaymentProcessor):
         basic_auth_pass=None,
     ):  # pylint disable=too-many-arguments
         """
-        Execute an API call to the Paygate using an HTTP `method` with some `data` as payload to an
+        Execute an API call to the PayGate using an HTTP `method` with some `data` as payload to an
         ecommerce `basket`.
         """
         requests_func = getattr(requests, method.lower())
 
-        # All calls to Paygate require basic authentication has the 1st layer of security.
+        # All calls to PayGate require basic authentication has the 1st layer of security.
         headers = {}
         if basic_auth_pass and basic_auth_pass:
             encoded_auth = base64.b64encode(
@@ -524,7 +524,7 @@ class PayGate(BasePaymentProcessor):
         request_data = {}
         request_data.update(data)
 
-        logger.info("Paygate calling '{}' with payload {}", url, request_data)
+        logger.info("PayGate calling '{}' with payload {}", url, request_data)
         try:
             # pylint: disable=not-callable
             response = requests_func(
@@ -550,7 +550,7 @@ class PayGate(BasePaymentProcessor):
 
     def _raise_api_error(self, message, response=None, response_data=None, basket=None):
         """
-        Raise an error while integrating with Paygate, so we have a normalized way of log when
+        Raise an error while integrating with PayGate, so we have a normalized way of log when
         something wasn't ok.
         """
         error_response = None
@@ -565,7 +565,7 @@ class PayGate(BasePaymentProcessor):
             error, transaction_id=basket.order_number if basket else None, basket=basket
         )
         logger.error(
-            "Failed request to Paygate API for basket [{}], response stored in entry [{}].",
+            "Failed request to PayGate API for basket [{}], response stored in entry [{}].",
             basket.id if basket else None,
             entry.id,
             exc_info=True,

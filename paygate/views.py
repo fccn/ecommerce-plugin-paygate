@@ -1,5 +1,5 @@
 """
-Paygate payment processing views in these views the callback pages will be implemented
+PayGate payment processing views in these views the callback pages will be implemented
 """
 import abc
 import json
@@ -37,11 +37,11 @@ OrderNumberGenerator = get_class("order.utils", "OrderNumberGenerator")
 PaymentProcessorResponse = get_model("payment", "PaymentProcessorResponse")
 
 
-class PaygateCallbackBaseResponseView(
+class PayGateCallbackBaseResponseView(
     EdxOrderPlacementMixin, View, metaclass=abc.ABCMeta
 ):
     """
-    Base class for all response views of Paygate callback's
+    Base class for all response views of PayGate callback's
     """
 
     @method_decorator(transaction.non_atomic_requests)
@@ -58,7 +58,7 @@ class PaygateCallbackBaseResponseView(
     @property
     def payment_processor(self):
         """
-        An instance of Paygate payment processor.
+        An instance of PayGate payment processor.
         """
         return PayGate(self.request.site)
 
@@ -83,7 +83,7 @@ class PaygateCallbackBaseResponseView(
 
         Returns:
             Basket: the basket object that this callback references.
-            PaymentProcessorResponse: The auditing model used to store the Paygate processor
+            PaymentProcessorResponse: The auditing model used to store the PayGate processor
                 response.
         """
         paygate_response = (
@@ -96,7 +96,7 @@ class PaygateCallbackBaseResponseView(
 
         # ppr = get_object_or_404(PaymentProcessorResponse, id=ppr_id)
 
-        # Get Basket from sent from Checkout Paygate API has the call back server params.
+        # Get Basket from sent from Checkout PayGate API has the call back server params.
         basket = None
         ppr = None
 
@@ -115,7 +115,7 @@ class PaygateCallbackBaseResponseView(
         return basket, ppr
 
 
-class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
+class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
     """
     A server-to-server notification that informs the ecommerce if the payment on the paygate
     has been with success or not.
@@ -135,21 +135,21 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
         """
         This function will handle the callback request in case it is done via HTTP POST method
 
-        Implementation of the server-to-server callback from Paygate to Ecommerce.
+        Implementation of the server-to-server callback from PayGate to Ecommerce.
         This method should be protected with an `callback_server_allowed_networks` paygate
         configuration with a list of allowed networks to send this POST.
 
         To view the payload of this POST, please see the `ServerCallbackExample` Schema input of
-        the Paygate Swagger.
+        the PayGate Swagger.
 
         In case of some exception/error this method will send only the HTTP response status code
-        without an user interface, because this method should be called from the Paygate.
+        without an user interface, because this method should be called from the PayGate.
         """
 
         allowed_networks = self.payment_processor.callback_server_allowed_networks
         if not allowed_networks:
             logger.warning(
-                "Paygate possible security risk missing 'callback_server_allowed_networks' configuration!"
+                "PayGate possible security risk missing 'callback_server_allowed_networks' configuration!"
             )
         if allowed_networks and not allowed_client_ip(
             get_client_ip(request),
@@ -168,7 +168,7 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
         )
         if not payed_with_success:
             logger.warning(
-                "Paygate server callback without success and correct statusCode of 'C'"
+                "PayGate server callback without success and correct statusCode of 'C'"
             )
             return HttpResponse("Incorrect success and status code", status=412)
 
@@ -180,7 +180,7 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
                 self.handle_payment(payment_processor_response.response, basket)
         except PaymentError:
             logger.exception(
-                "Paygate server callback error while handling payment with a payment error for basket [{}]",
+                "PayGate server callback error while handling payment with a payment error for basket [{}]",
                 basket.id,
             )
             return HttpResponseServerError(
@@ -188,7 +188,7 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
             )
         except Exception:
             logger.exception(
-                "Paygate server callback error while handling payment with another error for basket [{}]",
+                "PayGate server callback error while handling payment with another error for basket [{}]",
                 basket.id,
             )
             logger.error(traceback.format_exc())
@@ -199,7 +199,7 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
             # the basket already contains an order.
             # we could receive duplicated server callbacks.
             logger.warning(
-                "Paygate server callback the basket already has an order for basket [{}]",
+                "PayGate server callback the basket already has an order for basket [{}]",
                 basket.id,
             )
         else:
@@ -208,7 +208,7 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
                 order = self.create_order(request, basket)
             except Exception:  # pylint: disable=broad-except
                 logger.exception(
-                    "Paygate server callback error while creating order for basket [{}]",
+                    "PayGate server callback error while creating order for basket [{}]",
                     basket.id,
                 )
                 return HttpResponseServerError("Error while creating order")
@@ -221,9 +221,9 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
         return HttpResponse("Received server callback with success")
 
 
-class PaygateCallbackSuccessResponseView(PaygateCallbackBaseResponseView):
+class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
     """
-    This view is used by the Paygate frontend to redirect the user after he has payed with
+    This view is used by the PayGate frontend to redirect the user after he has payed with
     success.
     This callback should NOT be used to fullfill the order.
 
@@ -243,7 +243,7 @@ class PaygateCallbackSuccessResponseView(PaygateCallbackBaseResponseView):
             request
         )
         if not basket:
-            logger.warning("Paygate no basket found on the callback success")
+            logger.warning("PayGate no basket found on the callback success")
             return redirect(self.payment_processor.failure_url)
 
         receipt_url = get_receipt_page_url(
@@ -261,7 +261,7 @@ class PaygateCallbackSuccessResponseView(PaygateCallbackBaseResponseView):
             )
             if not payed_with_success:
                 logger.warning(
-                    "Paygate server callback without success and correct statusCode of 'C'"
+                    "PayGate server callback without success and correct statusCode of 'C'"
                 )
                 return HttpResponse("Incorrect success and status code", status=412)
 
@@ -294,13 +294,13 @@ class PaygateCallbackSuccessResponseView(PaygateCallbackBaseResponseView):
 
             return redirect(receipt_url)
         # else
-        #   basked already has an order, ok the Paygate already has successfully called the server
+        #   basked already has an order, ok the PayGate already has successfully called the server
         #      callback.
 
         return redirect(receipt_url)
 
 
-class PaygateCallbackRedirectResponseView(PaygateCallbackBaseResponseView):
+class PayGateCallbackRedirectResponseView(PayGateCallbackBaseResponseView):
     """
     This is base view for callbacks that just redirect the user
     """
@@ -315,25 +315,25 @@ class PaygateCallbackRedirectResponseView(PaygateCallbackBaseResponseView):
     @abc.abstractmethod
     def url_to_redirect(self):
         """
-        The URL that this view should redirect when it is called by the Paygate.
+        The URL that this view should redirect when it is called by the PayGate.
         """
         raise NotImplementedError
 
 
-class PaygateCallbackCancelResponseView(PaygateCallbackRedirectResponseView):
+class PayGateCallbackCancelResponseView(PayGateCallbackRedirectResponseView):
     """
-    This view is used by Paygate frontend to redirect the user after he has cancel the payment on
-    the Paygate user interface.
+    This view is used by PayGate frontend to redirect the user after he has cancel the payment on
+    the PayGate user interface.
     """
 
     def url_to_redirect(self):
         return self.payment_processor.cancel_url
 
 
-class PaygateCallbackFailureResponseView(PaygateCallbackRedirectResponseView):
+class PayGateCallbackFailureResponseView(PayGateCallbackRedirectResponseView):
     """
-    This view is used by Paygate frontend to redirect the user when some error has been raised
-    inside the Paygate.
+    This view is used by PayGate frontend to redirect the user when some error has been raised
+    inside the PayGate.
     """
 
     def url_to_redirect(self):

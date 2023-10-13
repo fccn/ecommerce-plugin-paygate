@@ -1,10 +1,10 @@
 """Payment processors urls file."""
 from django.urls import path
 
-from .views import (PaygateCallbackCancelResponseView,
-                    PaygateCallbackFailureResponseView,
-                    PaygateCallbackServerResponseView,
-                    PaygateCallbackSuccessResponseView)
+from .views import (PayGateCallbackCancelResponseView,
+                    PayGateCallbackFailureResponseView,
+                    PayGateCallbackServerResponseView,
+                    PayGateCallbackSuccessResponseView)
 
 # This route will be used for the callback pages.
 # The link of these pages are:
@@ -19,26 +19,26 @@ urlpatterns = [
     # fullfill (will enroll the student).
     path(
         r"callback/server/",
-        PaygateCallbackServerResponseView.as_view(),
+        PayGateCallbackServerResponseView.as_view(),
         name="callback_server",
     ),
     # other notifications
-    # Paygate redirects the user after he has payed
+    # PayGate redirects the user after he has payed
     path(
         r"callback/success/",
-        PaygateCallbackSuccessResponseView.as_view(),
+        PayGateCallbackSuccessResponseView.as_view(),
         name="callback_success",
     ),
-    # Paygate redirects the user if he has cancel the payment
+    # PayGate redirects the user if he has cancel the payment
     path(
         r"callback/cancel/",
-        PaygateCallbackCancelResponseView.as_view(),
+        PayGateCallbackCancelResponseView.as_view(),
         name="callback_cancel",
     ),
-    # Paygate redirects the user if the payment has finish with some error
+    # PayGate redirects the user if the payment has finish with some error
     path(
         r"callback/failure/",
-        PaygateCallbackFailureResponseView.as_view(),
+        PayGateCallbackFailureResponseView.as_view(),
         name="callback_failure",
     ),
 ]

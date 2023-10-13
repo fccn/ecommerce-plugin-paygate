@@ -11,4 +11,4 @@ log = logging.getLogger(__name__)
 
 class Command(BaseCommand):
 
-    help = """Search failed callback server requests that Paygate couldn't send."""
+    help = """Search failed callback server requests that PayGate couldn't send."""

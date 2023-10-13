@@ -1,5 +1,5 @@
 ==================================================================================
-Paygate payment processor for Open edX
+PayGate payment processor for Open edX
 ==================================================================================
 
 
@@ -37,7 +37,7 @@ Make sure that the discovery and mfe plugins are disabled::
     tutor plugins disable mfe
     tutor plugins disable discovery
 
-Add the Paygate payment processor to the Docker image::
+Add the PayGate payment processor to the Docker image::
 
     tutor config save \
         --set 'ECOMMERCE_EXTRA_PIP_REQUIREMENTS=["https://github.com/fccn/ecommerce-plugin-paygate"]'
@@ -68,11 +68,11 @@ Run initialization scripts::
 
     tutor local quickstart
 
-Enable the Paygate payment backend::
+Enable the PayGate payment backend::
 
     tutor local run ecommerce ./manage.py waffle_switch --create payment_processor_active_paygate on
 
-All payments will then proceed through the Paygate payment processor.
+All payments will then proceed through the PayGate payment processor.
 
 
 Devstack
@@ -150,11 +150,11 @@ http://localhost:18130/admin/core/siteconfiguration/1/change/
 Callbacks
 ===============
 
-There are different callbacks that the Paygate uses.
+There are different callbacks that the PayGate uses.
 The success, cancel and failure callbacks are used to redirect the user after he has payed with success,
-has cancel the payment inside the Paygate user interface or some error has been raised.
+has cancel the payment inside the PayGate user interface or some error has been raised.
 
-Additionally, there is also a server-to-server callback, the Paygate calls the Ecommerce informing
+Additionally, there is also a server-to-server callback, the PayGate calls the Ecommerce informing
 that some payment reference has been payed.
 
 Example of the server callback, change the `payment_ref` with your basked identification::
