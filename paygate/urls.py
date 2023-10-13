@@ -1,8 +1,10 @@
 """Payment processors urls file."""
-from django.conf.urls import url
 from django.urls import path
 
-from .views import *
+from .views import (PaygateCallbackCancelResponseView,
+                    PaygateCallbackFailureResponseView,
+                    PaygateCallbackServerResponseView,
+                    PaygateCallbackSuccessResponseView)
 
 # This route will be used for the callback pages.
 # The link of these pages are:
@@ -11,7 +13,7 @@ from .views import *
 # - http://ecommerce_root_url/payment/paygate/callback/cancel/
 # - http://ecommerce_root_url/payment/paygate/callback/failure/
 
-app_name = "ecommerce_plugin_paygate"
+app_name = "ecommerce_plugin_paygate"  # pylint: disable=invalid-name
 urlpatterns = [
     # server-to-server notification this is the one that fullfills and create the order to
     # fullfill (will enroll the student).

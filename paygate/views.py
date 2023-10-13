@@ -1,30 +1,33 @@
 """
 Paygate payment processing views in these views the callback pages will be implemented
 """
-import json
 import abc
+import json
 import logging
+import traceback
 
-from django.utils.translation import ugettext_lazy as _
-from django.contrib import messages
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
-from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseServerError
+from django.http import (HttpResponse, HttpResponseNotAllowed,
+                         HttpResponseServerError)
 from django.shortcuts import redirect
 from django.utils.decorators import method_decorator
+from django.utils.translation import ugettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
-from ecommerce.extensions.checkout.mixins import EdxOrderPlacementMixin
-from ecommerce.extensions.checkout.utils import get_receipt_page_url
-from ecommerce.extensions.partner import strategy
-from oscar.apps.payment.exceptions import PaymentError
-from oscar.core.loading import get_class, get_model
+from ecommerce.extensions.checkout.mixins import \
+    EdxOrderPlacementMixin  # pylint: disable=import-error
+from ecommerce.extensions.checkout.utils import \
+    get_receipt_page_url  # pylint: disable=import-error
+from ecommerce.extensions.partner import \
+    strategy  # pylint: disable=import-error
+from oscar.apps.payment.exceptions import \
+    PaymentError  # pylint: disable=import-error
+from oscar.core.loading import get_class  # pylint: disable=import-error
+from oscar.core.loading import get_model  # pylint: disable=import-error
 
-from .ip import *
+from .ip import allowed_client_ip, get_client_ip
 from .processors import PayGate
-
-# from oscar.apps.partner import strategy
-
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +40,19 @@ PaymentProcessorResponse = get_model("payment", "PaymentProcessorResponse")
 class PaygateCallbackBaseResponseView(
     EdxOrderPlacementMixin, View, metaclass=abc.ABCMeta
 ):
-    # Disable atomicity for the view. Otherwise, we'd be unable to commit to the database
-    # until the request had concluded; Django will refuse to commit when an atomic() block
-    # is active, since that would break atomicity. Without an order present in the database
-    # at the time fulfillment is attempted, asynchronous order fulfillment tasks will fail.
+    """
+    Base class for all response views of Paygate callback's
+    """
+
     @method_decorator(transaction.non_atomic_requests)
     @method_decorator(csrf_exempt)
     def dispatch(self, request, *args, **kwargs):
+        """
+        Disable atomicity for the view. Otherwise, we'd be unable to commit to the database
+        until the request had concluded; Django will refuse to commit when an atomic() block
+        is active, since that would break atomicity. Without an order present in the database
+        at the time fulfillment is attempted, asynchronous order fulfillment tasks will fail.
+        """
         return super().dispatch(request, *args, **kwargs)
 
     @property
@@ -54,6 +63,9 @@ class PaygateCallbackBaseResponseView(
         return PayGate(self.request.site)
 
     def _get_basket(self, basket_id):
+        """
+        Get the Django Oscar Basket class from its id.
+        """
         if not basket_id:
             return None
         try:
@@ -85,6 +97,9 @@ class PaygateCallbackBaseResponseView(
         # ppr = get_object_or_404(PaymentProcessorResponse, id=ppr_id)
 
         # Get Basket from sent from Checkout Paygate API has the call back server params.
+        basket = None
+        ppr = None
+
         transaction_id = paygate_response.get("payment_ref")
         if transaction_id:
             basket_id = OrderNumberGenerator().basket_id(transaction_id)
@@ -95,10 +110,9 @@ class PaygateCallbackBaseResponseView(
                 transaction_id=transaction_id,
                 basket=basket,
             )
-            return basket, ppr
         else:
             logger.error("Missing 'payment_ref' parameter from request")
-            return None, None
+        return basket, ppr
 
 
 class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
@@ -108,7 +122,7 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
     The decision is based on the payload of this call.
     """
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request, *args, **kwargs):  # pylint: disable=unused-argument
         """
         Handle the callback request if it is done via HTTP GET method.
 
@@ -117,7 +131,7 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
         """
         return HttpResponseNotAllowed(["POST"])
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request, *args, **kwargs):  # pylint: disable=unused-argument
         """
         This function will handle the callback request in case it is done via HTTP POST method
 
@@ -161,21 +175,23 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
         try:
             # Explicitly delimit operations which will be rolled back if an exception occurs.
             with transaction.atomic():
-                # This method have to be invoked in order to handle a payment, this method could raise an PaymentError exception.
+                # This method have to be invoked in order to handle a payment,
+                # this method could raise an PaymentError exception.
                 self.handle_payment(payment_processor_response.response, basket)
         except PaymentError:
             logger.exception(
-                "Paygate server callback error while handling payment with a payment error for basket [%d]",
+                "Paygate server callback error while handling payment with a payment error for basket [{}]",
                 basket.id,
             )
             return HttpResponseServerError(
                 "Error while handling payment - payment error"
             )
-        except:  # pylint: disable=bare-except
+        except Exception:
             logger.exception(
-                "Paygate server callback error while handling payment with another error for basket [%d]",
+                "Paygate server callback error while handling payment with another error for basket [{}]",
                 basket.id,
             )
+            logger.error(traceback.format_exc())
             return HttpResponseServerError("Error while handling payment - other error")
 
         # if the basket hasn't already contain an order, create one
@@ -183,7 +199,7 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
             # the basket already contains an order.
             # we could receive duplicated server callbacks.
             logger.warning(
-                "Paygate server callback the basket already has an order for basket [%d]",
+                "Paygate server callback the basket already has an order for basket [{}]",
                 basket.id,
             )
         else:
@@ -192,7 +208,7 @@ class PaygateCallbackServerResponseView(PaygateCallbackBaseResponseView):
                 order = self.create_order(request, basket)
             except Exception:  # pylint: disable=broad-except
                 logger.exception(
-                    "Paygate server callback error while creating order for basket [%d]",
+                    "Paygate server callback error while creating order for basket [{}]",
                     basket.id,
                 )
                 return HttpResponseServerError("Error while creating order")
@@ -217,7 +233,9 @@ class PaygateCallbackSuccessResponseView(PaygateCallbackBaseResponseView):
     notification.
     """
 
-    def get(self, request, *args, **kwargs):
+    def get(
+        self, request, *args, **kwargs
+    ):  # pylint: disable=unused-argument,too-many-return-statements
         """
         This function will handle the callback request in case it is done via HTTP GET method
         """
@@ -250,14 +268,18 @@ class PaygateCallbackSuccessResponseView(PaygateCallbackBaseResponseView):
             try:
                 # Explicitly delimit operations which will be rolled back if an exception occurs.
                 with transaction.atomic():
-                    # This method have to be invoked in order to handle a payment, this method could raise an PaymentError exception.
+                    # This method have to be invoked in order to handle a payment,
+                    # this method could raise an PaymentError exception.
                     self.handle_payment(payment_processor_response.response, basket)
             except PaymentError:
                 return redirect(self.payment_processor.error_url)
-            except:  # pylint: disable=bare-except
+            except (
+                Exception
+            ) as exp:  # pylint: disable=broad-exception-caught,unused-variable
                 logger.exception(
-                    "Attempts to handle payment for basket [%d] failed.", basket.id
+                    "Attempts to handle payment for basket [{}] failed.", basket.id
                 )
+                logger.error(traceback.format_exc())
                 return redirect(receipt_url)
 
             try:
@@ -283,7 +305,7 @@ class PaygateCallbackRedirectResponseView(PaygateCallbackBaseResponseView):
     This is base view for callbacks that just redirect the user
     """
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request, *args, **kwargs):  # pylint: disable=unused-argument
         """
         This function will handle the callback request in case it is done via HTTP GET method
         """
@@ -292,6 +314,9 @@ class PaygateCallbackRedirectResponseView(PaygateCallbackBaseResponseView):
 
     @abc.abstractmethod
     def url_to_redirect(self):
+        """
+        The URL that this view should redirect when it is called by the Paygate.
+        """
         raise NotImplementedError
 
 
