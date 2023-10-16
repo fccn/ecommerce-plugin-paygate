@@ -4,9 +4,12 @@ Ip aware code
 import ipaddress
 
 
-def get_client_ip(request):
+def get_client_ip(request) -> str:
     """
     Get the Client IP address from the `X-Forwarded-For` header.
+
+    Arguments:
+        request (Request): A Request object to get the client IP address.
     """
     x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
     if x_forwarded_for:
@@ -24,5 +27,6 @@ def allowed_client_ip(client_ip: str, allowed_networks: list) -> bool:
         filter(
             lambda net: ipaddress.ip_address(client_ip) in ipaddress.ip_network(net),
             allowed_networks,
-        ) is not None
+        ),
+        False,
     )
