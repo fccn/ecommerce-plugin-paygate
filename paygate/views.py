@@ -12,19 +12,14 @@ from django.http import (HttpResponse, HttpResponseNotAllowed,
                          HttpResponseServerError)
 from django.shortcuts import redirect
 from django.utils.decorators import method_decorator
-from django.utils.translation import ugettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
-from ecommerce.extensions.checkout.mixins import \
-    EdxOrderPlacementMixin  # pylint: disable=import-error
-from ecommerce.extensions.checkout.utils import \
-    get_receipt_page_url  # pylint: disable=import-error
-from ecommerce.extensions.partner import \
-    strategy  # pylint: disable=import-error
-from oscar.apps.payment.exceptions import \
-    PaymentError  # pylint: disable=import-error
-from oscar.core.loading import get_class  # pylint: disable=import-error
-from oscar.core.loading import get_model  # pylint: disable=import-error
+from oscar.apps.payment.exceptions import PaymentError
+from oscar.core.loading import get_class, get_model
+
+from ecommerce.extensions.checkout.mixins import EdxOrderPlacementMixin
+from ecommerce.extensions.checkout.utils import get_receipt_page_url
+from ecommerce.extensions.partner import strategy
 
 from .ip import allowed_client_ip, get_client_ip
 from .processors import PayGate
@@ -163,8 +158,8 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
         )
 
         payed_with_success = (
-            bool(payment_processor_response.response.get("success", False))
-            and payment_processor_response.response.get("statusCode", "") == "C"
+            bool(payment_processor_response.response.get("success", False)) and
+            payment_processor_response.response.get("statusCode", "") == "C"
         )
         if not payed_with_success:
             logger.warning(
@@ -180,15 +175,15 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
                 self.handle_payment(payment_processor_response.response, basket)
         except PaymentError:
             logger.exception(
-                "PayGate server callback error while handling payment with a payment error for basket [{}]",
+                "PayGate server callback error while handling payment with a payment error for basket [%d]",
                 basket.id,
             )
             return HttpResponseServerError(
                 "Error while handling payment - payment error"
             )
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             logger.exception(
-                "PayGate server callback error while handling payment with another error for basket [{}]",
+                "PayGate server callback error while handling payment with another error for basket [%d]",
                 basket.id,
             )
             logger.error(traceback.format_exc())
@@ -199,7 +194,7 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
             # the basket already contains an order.
             # we could receive duplicated server callbacks.
             logger.warning(
-                "PayGate server callback the basket already has an order for basket [{}]",
+                "PayGate server callback the basket already has an order for basket [%d]",
                 basket.id,
             )
         else:
@@ -208,7 +203,7 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
                 order = self.create_order(request, basket)
             except Exception:  # pylint: disable=broad-except
                 logger.exception(
-                    "PayGate server callback error while creating order for basket [{}]",
+                    "PayGate server callback error while creating order for basket [%d]",
                     basket.id,
                 )
                 return HttpResponseServerError("Error while creating order")
@@ -256,8 +251,8 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
             # Received the frontend success callback before received the server-to-server callback
 
             payed_with_success = (
-                bool(payment_processor_response.response.get("is_paid", False))
-                and payment_processor_response.response.get("StatusCode", "") == "C"
+                bool(payment_processor_response.response.get("is_paid", False)) and
+                payment_processor_response.response.get("StatusCode", "") == "C"
             )
             if not payed_with_success:
                 logger.warning(
@@ -273,11 +268,9 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
                     self.handle_payment(payment_processor_response.response, basket)
             except PaymentError:
                 return redirect(self.payment_processor.error_url)
-            except (
-                Exception
-            ) as exp:  # pylint: disable=broad-exception-caught,unused-variable
+            except Exception:  # pylint: disable=broad-except
                 logger.exception(
-                    "Attempts to handle payment for basket [{}] failed.", basket.id
+                    "Attempts to handle payment for basket [%d] failed.", basket.id
                 )
                 logger.error(traceback.format_exc())
                 return redirect(receipt_url)

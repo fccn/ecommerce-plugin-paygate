@@ -7,17 +7,16 @@ import logging
 import re
 from decimal import Decimal
 
-import requests  # pylint: disable=import-error
-import simplejson.errors  # pylint: disable=import-error
+import requests
+import simplejson.errors
 from django.conf import settings
 from django.urls import reverse
-from ecommerce.core.url_utils import \
-    get_ecommerce_url  # pylint: disable=import-error
-from ecommerce.extensions.payment.processors import (  # pylint: disable=import-error
-    BasePaymentProcessor, HandledProcessorResponse)
-from oscar.apps.payment.exceptions import \
-    GatewayError  # pylint: disable=import-error
-from oscar.core.loading import get_model  # pylint: disable=import-error
+from oscar.apps.payment.exceptions import GatewayError
+from oscar.core.loading import get_model
+
+from ecommerce.core.url_utils import get_ecommerce_url
+from ecommerce.extensions.payment.processors import (BasePaymentProcessor,
+                                                     HandledProcessorResponse)
 
 logger = logging.getLogger(__name__)
 ProductClass = get_model("catalogue", "ProductClass")
@@ -223,7 +222,7 @@ class PayGate(BasePaymentProcessor):
             including a signature. At a minimum, this dict must include a `payment_page_url`
             indicating the location of the processor's hosted payment page.
         """
-        logger.info("PayGate: started payment for basket {}", basket.id)
+        logger.info("PayGate: started payment for basket %d", basket.id)
 
         # Create PPR early to obtain an ID that can be passed to the return urls
         success_payment_processor_response = self.record_processor_response(
@@ -323,12 +322,12 @@ class PayGate(BasePaymentProcessor):
         if not success:
             logger.warning(
                 (
-                    "PayGate checkout: not successed! "
-                    "for basket={} "
-                    "payment_id={} "
-                    "return code={} "
-                    "shor error message={} "
-                    "long error message={}"
+                    "PayGate checkout: not succeed! "
+                    "for basket=%d "
+                    "payment_id=%d "
+                    "return code=%s "
+                    "shor error message=%s "
+                    "long error message=%s"
                 ),
                 basket.id,
                 payment_id,
@@ -349,7 +348,7 @@ class PayGate(BasePaymentProcessor):
         success_payment_processor_response.save()
 
         logger.info(
-            "PayGate payment: basket={} obtained paygate payment id={}",
+            "PayGate payment: basket=%d obtained paygate payment id=%d",
             basket.id,
             payment_id,
         )
@@ -484,9 +483,9 @@ class PayGate(BasePaymentProcessor):
         if len(response_data) == 1:
             paygate_transaction = response_data[0]
             return (
-                (paygate_transaction.get("MERCHANT_CODE") == self.merchant_code)
-                and (paygate_transaction.get("STATUS_CODE") == "C")
-                and (paygate_transaction.get("PAYMENT_REF") == basket.order_number)
+                (paygate_transaction.get("MERCHANT_CODE") == self.merchant_code) and
+                (paygate_transaction.get("STATUS_CODE") == "C") and
+                (paygate_transaction.get("PAYMENT_REF") == basket.order_number)
             )
         return False
 
@@ -528,7 +527,7 @@ class PayGate(BasePaymentProcessor):
         request_data = {}
         request_data.update(data)
 
-        logger.info("PayGate calling '{}' with payload {}", url, request_data)
+        logger.info("PayGate calling '%s' with payload %s", url, request_data)
         try:
             # pylint: disable=not-callable
             response = requests_func(
@@ -569,7 +568,7 @@ class PayGate(BasePaymentProcessor):
             error, transaction_id=basket.order_number if basket else None, basket=basket
         )
         logger.error(
-            "Failed request to PayGate API for basket [{}], response stored in entry [{}].",
+            "Failed request to PayGate API for basket [%d], response stored in entry [%d].",
             basket.id if basket else None,
             entry.id,
             exc_info=True,
