@@ -28,7 +28,10 @@ _prerequire:
 
 test: | _prerequire ## Run all the tests, to run a specific test run: make test `pwd`/paygate/tests/test_XPTO.py
 	args="$(filter-out $@,$(MAKECMDGOALS))" && \
-    cd ${ECOMMERCE_SOURCE_PATH} && DJANGO_SETTINGS_MODULE=paygate.settings.test coverage run --source="$(ROOT_DIR)" -m pytest $${args:-${1}:$(ROOT_DIR)}
+	arg_2="$${args:-${1}}" && \
+	arg_3="$${arg_2:=$(ROOT_DIR)/paygate}" && \
+	cd ${ECOMMERCE_SOURCE_PATH} && \
+	DJANGO_SETTINGS_MODULE=paygate.settings.test coverage run --source="$(ROOT_DIR)" -m pytest $${arg_3}
 .PHONY: test
 
 clean: ## remove all the unneeded artifacts
@@ -42,25 +45,29 @@ clean: ## remove all the unneeded artifacts
 
 # It will use the `.isort.cfg` from ecommerce
 lint-isort: _prerequire
-	cd ${ECOMMERCE_SOURCE_PATH} && isort --check-only --diff $(ROOT_DIR)/paygate
+	@cd ${ECOMMERCE_SOURCE_PATH} && \
+	isort --check-only --diff $(ROOT_DIR)/paygate
 .PHONY: lint-isort
 
 # It will use the `.isort.cfg` from ecommerce
 run-isort: _prerequire
-	cd ${ECOMMERCE_SOURCE_PATH} && isort $(ROOT_DIR)/paygate
+	@cd ${ECOMMERCE_SOURCE_PATH} && \
+	isort $(ROOT_DIR)/paygate
 .PHONY: run_isort
 
 # It will use the `setup.cfg` from ecommerce
 lint-pycodestyle: _prerequire
-	cd ${ECOMMERCE_SOURCE_PATH} && pycodestyle --config=setup.cfg $(ROOT_DIR)/paygate
+	@cd ${ECOMMERCE_SOURCE_PATH} && \
+	pycodestyle --config=setup.cfg $(ROOT_DIR)/paygate
 .PHONY: lint-pycodestyle
 
 # It will use the `pylintrc` from ecommerce
 lint-pylint: _prerequire
-	cd ${ECOMMERCE_SOURCE_PATH} && pylint -j 0 --rcfile=pylintrc --verbose --init-hook='import sys; sys.path.append("${ECOMMERCE_SOURCE_PATH}")' $(ROOT_DIR)/paygate
+	@cd ${ECOMMERCE_SOURCE_PATH} && \
+	pylint -j 0 --rcfile=pylintrc --verbose --init-hook='import sys; sys.path.append("${ECOMMERCE_SOURCE_PATH}")' $(ROOT_DIR)/paygate
 .PHONY: lint-pylint
 
-lint: lint-isort lint-pycodestyle lint-pylint ## Run Python linting
+lint: | lint-isort lint-pycodestyle lint-pylint ## Run Python linting
 .PHONY: lint
 
 validate: tests lint ## Run Python unit tests and linting
