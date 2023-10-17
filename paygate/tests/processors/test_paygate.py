@@ -3,17 +3,16 @@ from unittest.mock import patch
 
 import factory
 import mock
-from django.test import override_settings
 from paygate.processors import PayGate
-from paygate.tests.processors.mixins import PayGateMixin
 
 from ecommerce.extensions.payment.tests.processors.mixins import \
     PaymentProcessorTestCaseMixin
 from ecommerce.tests.factories import UserFactory
 from ecommerce.tests.testcases import TestCase
 
+from ecommerce.extensions.payment.processors import HandledProcessorResponse
 
-class PayGateTests(PayGateMixin, PaymentProcessorTestCaseMixin, TestCase):
+class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
     """
     The PayGate payment processor tests using the Ecommerce approach of using the
     `PaymentProcessorTestCaseMixin` class.
@@ -79,12 +78,12 @@ class PayGateTests(PayGateMixin, PaymentProcessorTestCaseMixin, TestCase):
                 "ACCESS_TOKEN": "PwdX_XXXX_YYYY",
                 "MERCHANT_CODE": "NAU",
                 "IS_RECURRENT": False,
-                "CLIENT_NAME": self.user.full_name,  # to fix
+                "CLIENT_NAME": self.user.full_name,
                 "EMAIL": self.user.email,
                 "LANGUAGE": "en",
                 "PAYMENT_REF": "EDX-100001",
                 "TRANSACTION_DESC": "Seat in Demo Course with test-certificate-type certificate",
-                "CURRENCY": "USD",  # test also with EUR
+                "CURRENCY": "EUR",
                 "TOTAL_AMOUNT": round(Decimal(20.00), 2),
                 "PAYMENT_TYPES": [
                     "VISA",
@@ -113,7 +112,63 @@ class PayGateTests(PayGateMixin, PaymentProcessorTestCaseMixin, TestCase):
         )
 
     def test_handle_processor_response(self):
-        pass
+        """
+        Test the PayGate `handle_processor_response` method.
+        The method verifies that the payment has been processed correctly and successfully by the
+        PayGate, this means that the `handle_processor_response` method will again call the PayGate
+        to check if the basket has been payed by calling the `BackOfficeSearchTransactions` API.
+        """
+        payment_page_url = "https://frontend-test.optimistic.blue/pay"
+        session_token = "A_TOKEN_THAT_WILL_BE_USED"
+
+        # mock the PayGate checkout call
+        with mock.patch.object(
+            PayGate,
+            "_make_api_json_request",
+            return_value=[{
+                "MERCHANT_CODE": "NAU",
+                "STATUS_CODE": "C",
+                "PAYMENT_REF": self.basket.order_number,
+            }],
+        ) as mock__make_api_json_request:
+            self.request.LANGUAGE_CODE = "en"
+            self.assertEqual(
+                self.processor.handle_processor_response(
+                    {
+                        "paymentValue": "20.00",
+                        "transaction_id": "ALONGTRANSACTIONIDENTIFICATION",
+                        "card_masked_pan": "1234",
+                        "payment_type_code": "REFMB",
+                    },
+                    basket=self.basket,
+                ),
+                HandledProcessorResponse(
+                    transaction_id="ALONGTRANSACTIONIDENTIFICATION",
+                    total=round(Decimal(20.00), 2),
+                    currency="EUR",
+                    card_number="1234",
+                    card_type="REFMB",
+                ),
+            )
+
+        mock__make_api_json_request.assert_called_with(
+            "https://test.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions",
+            method="POST",
+            data={
+                "ACCESS_TOKEN": "PwdX_XXXX_YYYY",
+                "MERCHANT_CODE": "NAU",
+                "PAYMENT_REF": self.basket.order_number,
+                "STATUS_CODE": "C",
+                "SORT_DIRECTION": "ASC",
+                "SORT_COLUMN": "PAYMENT_REF",
+                "NEXT_ROWS": 2,
+                "OFFSET_ROWS": 0,
+            },
+            basket=self.basket,
+            timeout=10,
+            basic_auth_user="NAU",
+            basic_auth_pass="APassword",
+        )
 
     def test_issue_credit(self):
         pass
