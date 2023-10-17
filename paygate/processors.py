@@ -263,7 +263,8 @@ class PayGate(BasePaymentProcessor):
                 [line.product.title for line in basket.lines.all()]
             ),
             "CURRENCY": basket.currency,  # should be EUR
-            "TOTAL_AMOUNT": basket.total_incl_tax,
+            # Transaction amount to debit the client. Decimal format: XXXXX.XX
+            "TOTAL_AMOUNT": round(basket.total_incl_tax, 2),
             "PAYMENT_TYPES": self.payment_types,
             # 'REFMB_START_DATE': '2023-09-20T16:27:34.518Z',
             # 'REFMB_END_DATE': '2023-09-20T16:27:34.518Z',

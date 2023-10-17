@@ -116,9 +116,10 @@ To develop using the devstack edit the `ecommerce/settings/private.py` file add 
             }
         }
     }
-    PAYMENT_PROCESSORS = ("ecommerce_plugin_paygate.processors.PayGate",)
-    EXTRA_PAYMENT_PROCESSOR_URLS = {"paygate": "ecommerce_plugin_paygate.urls"}
+    PAYMENT_PROCESSORS = ("paygate.processors.PayGate",)
+    EXTRA_PAYMENT_PROCESSOR_URLS = {"paygate": "paygate.urls"}
     OSCAR_DEFAULT_CURRENCY = 'EUR'
+    
     LANGUAGE_CODE = "pt"
     from django.utils.translation import ugettext_lazy as _
     LANGUAGES = (
@@ -126,10 +127,10 @@ To develop using the devstack edit the `ecommerce/settings/private.py` file add 
         ('en', _('English')),
     )
     LOGO_URL = "https://lms.nau.edu.pt/static/nau-basic/images/nau_azul.svg"
-    
+
     # Use custom tax strategy
     NAU_EXTENSION_OSCAR_STRATEGY_CLASS = "ecommerce_plugin_paygate.strategy.DefaultStrategy"
-    
+
     # Configure tax as 23% used in Portugal
     NAU_EXTENSION_TAX_RATE = "0.298701299" # = 0.23/0.77
 

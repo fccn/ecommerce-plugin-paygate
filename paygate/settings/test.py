@@ -3,32 +3,29 @@ Settings for paygate
 """
 from ecommerce.settings.test import *
 
-# from __future__ import absolute_import, unicode_literals
+PAYMENT_PROCESSORS = ('paygate.processors.PayGate',)
 
-# from .common import *  # pylint: disable=wildcard-import, unused-wildcard-import
+PAYMENT_PROCESSOR_CONFIG={
+    "edx": {
+        "paygate": {
+            "access_token": 'PwdX_XXXX_YYYY',
+            "merchant_code": "NAU",
+            "api_checkout_url": 'https://test.optimistic.blue/paygateWS/api/CheckOut',
+            "api_basic_auth_user": "NAU",
+            "api_basic_auth_pass": "APassword",
+            "payment_types": ["VISA", "MASTERCARD", "AMEX", "PAYPAL", "MBWAY", "REFMB", "DUC"]
+        }
+    },
+    "other": {
+        "paygate": {
+            "access_token": 'other_PwdX_XXXX_YYYY',
+            "merchant_code": "other_NAU",
+            "api_checkout_url": 'https://test_other.optimistic.blue/paygateWS/api/CheckOut',
+            "api_basic_auth_user": "other_NAU",
+            "api_basic_auth_pass": "other_APassword",
+            "payment_types": ["VISA", "MBWAY", "REFMB", "DUC"]
+        }
+    }
+}
 
-
-# class SettingsClass:
-#     """ dummy settings class """
-
-
-# DEBUG = True
-# SETTINGS = SettingsClass()
-# # plugin_settings(SETTINGS)
-# vars().update(SETTINGS.__dict__)
-
-
-# ROOT_URLCONF = "paygate.urls"
-# ALLOWED_HOSTS = ["*"]
-
-# # This key needs to be defined so that the check_apps_ready passes and the
-# # AppRegistry is loaded
-# DATABASES = {
-#     "default": {
-#         "ENGINE": "django.db.backends.sqlite3",
-#         "NAME": "db.sqlite3",
-#     }
-# }
-
-# # This is to avoid "initialized translation infrastructure before the apps registry is ready" issue in tests.
-# USE_I18N = False
+EXTRA_PAYMENT_PROCESSOR_URLS = {"paygate": "paygate.urls"}
