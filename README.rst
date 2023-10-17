@@ -1,5 +1,5 @@
 ==================================================================================
-Paygate payment processor for Open edX
+PayGate payment processor for Open edX
 ==================================================================================
 
 
@@ -37,7 +37,7 @@ Make sure that the discovery and mfe plugins are disabled::
     tutor plugins disable mfe
     tutor plugins disable discovery
 
-Add the Paygate payment processor to the Docker image::
+Add the PayGate payment processor to the Docker image::
 
     tutor config save \
         --set 'ECOMMERCE_EXTRA_PIP_REQUIREMENTS=["https://github.com/fccn/ecommerce-plugin-paygate"]'
@@ -56,10 +56,15 @@ Save your PayGate credentials to paygate.yml::
         access_token: PwdX_XXXX_YYYY
         merchant_code: NAU
         api_checkout_url: https://lab.optimistic.blue/paygateWS/api/CheckOut
+        api_checkout_req_timeout_sec: 10 # optional
+        api_back_search_transactions: https://lab.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions
+        api_back_search_transactions_timeout_seconds: 10 # optional
         api_basic_auth_user: username
         api_basic_auth_pass: password
-        cancel_checkout_path: /checkout/cancel-checkout/
-        error_path: /checkout/error/
+        cancel_checkout_path: /checkout/cancel-checkout/ # optional
+        error_path: /checkout/error/ # optional
+        title: PayGate # optional
+        payment_types: ["VISA", "MASTERCARD", "AMEX", "PAYPAL", "MBWAY", "REFMB", "DUC"]
     $ tutor config save --set "ECOMMERCE_PAYMENT_PROCESSORS=$(cat paygate.yml)"
 
     The `cancel_checkout_path` and `error_path` are optional.
@@ -68,11 +73,11 @@ Run initialization scripts::
 
     tutor local quickstart
 
-Enable the Paygate payment backend::
+Enable the PayGate payment backend::
 
     tutor local run ecommerce ./manage.py waffle_switch --create payment_processor_active_paygate on
 
-All payments will then proceed through the Paygate payment processor.
+All payments will then proceed through the PayGate payment processor.
 
 
 Devstack
@@ -111,9 +116,10 @@ To develop using the devstack edit the `ecommerce/settings/private.py` file add 
             }
         }
     }
-    PAYMENT_PROCESSORS = ("ecommerce_plugin_paygate.processors.PayGate",)
-    EXTRA_PAYMENT_PROCESSOR_URLS = {"paygate": "ecommerce_plugin_paygate.urls"}
+    PAYMENT_PROCESSORS = ("paygate.processors.PayGate",)
+    EXTRA_PAYMENT_PROCESSOR_URLS = {"paygate": "paygate.urls"}
     OSCAR_DEFAULT_CURRENCY = 'EUR'
+    
     LANGUAGE_CODE = "pt"
     from django.utils.translation import ugettext_lazy as _
     LANGUAGES = (
@@ -121,10 +127,10 @@ To develop using the devstack edit the `ecommerce/settings/private.py` file add 
         ('en', _('English')),
     )
     LOGO_URL = "https://lms.nau.edu.pt/static/nau-basic/images/nau_azul.svg"
-    
+
     # Use custom tax strategy
     NAU_EXTENSION_OSCAR_STRATEGY_CLASS = "ecommerce_plugin_paygate.strategy.DefaultStrategy"
-    
+
     # Configure tax as 23% used in Portugal
     NAU_EXTENSION_TAX_RATE = "0.298701299" # = 0.23/0.77
 
@@ -150,11 +156,11 @@ http://localhost:18130/admin/core/siteconfiguration/1/change/
 Callbacks
 ===============
 
-There are different callbacks that the Paygate uses.
+There are different callbacks that the PayGate uses.
 The success, cancel and failure callbacks are used to redirect the user after he has payed with success,
-has cancel the payment inside the Paygate user interface or some error has been raised.
+has cancel the payment inside the PayGate user interface or some error has been raised.
 
-Additionally, there is also a server-to-server callback, the Paygate calls the Ecommerce informing
+Additionally, there is also a server-to-server callback, the PayGate calls the Ecommerce informing
 that some payment reference has been payed.
 
 Example of the server callback, change the `payment_ref` with your basked identification::
