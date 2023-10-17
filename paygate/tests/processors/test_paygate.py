@@ -5,12 +5,12 @@ import factory
 import mock
 from paygate.processors import PayGate
 
+from ecommerce.extensions.payment.processors import HandledProcessorResponse
 from ecommerce.extensions.payment.tests.processors.mixins import \
     PaymentProcessorTestCaseMixin
 from ecommerce.tests.factories import UserFactory
 from ecommerce.tests.testcases import TestCase
 
-from ecommerce.extensions.payment.processors import HandledProcessorResponse
 
 class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
     """
