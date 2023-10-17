@@ -23,7 +23,7 @@ help:
 .PHONY: help
 
 _prerequire:
-	@test $${DJANGO_SETTINGS_MODULE?Please run the tests inside ecommerce container}
+	@if [ ! -d "${ECOMMERCE_SOURCE_PATH}" ]; then { echo "Ecommerce directory doesn't exist.\n  ECOMMERCE_SOURCE_PATH=${ECOMMERCE_SOURCE_PATH}\nPlease check if that directory exist or change the default value using:\n  ECOMMERCE_SOURCE_PATH=~/<different path>/ecommerce make <target>" ; exit 1; } fi
 .PHONY: _prerequire
 
 test: | _prerequire ## Run all the tests, to run a specific test run: make test `pwd`/paygate/tests/test_XPTO.py

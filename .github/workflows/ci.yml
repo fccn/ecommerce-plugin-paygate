@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+    - master
+    - main
+
+jobs:
+  ci:
+    name: Run tests and linting
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout PayGate
+        uses: actions/checkout@v4
+        with:
+          # Relative path to place the repository
+          path: ecommerce-plugin-paygate
+      
+      - name: Checkout ecommerce
+        uses: actions/checkout@v4
+        with:
+          # Repository name with owner
+          repository: fccn/ecommerce
+          # Change the branch to checkout
+          ref: nau/nutmeg.master
+          # Relative path to place the repository
+          path: ecommerce
+    
+      - name: Use Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+          cache: 'pip' # caching pip dependencies
+      
+      - name: Install ecommerce pip requirements
+        run: pip install -r ecommerce/requirements/dev.txt
+
+      - name: Install paygate
+        run: pip install -e ecommerce-plugin-paygate
+
+      - name: Run unit tests
+        run: ECOMMERCE_SOURCE_PATH=../ecommerce make -C ecommerce-plugin-paygate test
+
+      - name: Run lint
+        run: ECOMMERCE_SOURCE_PATH=../ecommerce make -C ecommerce-plugin-paygate lint
