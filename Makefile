@@ -27,7 +27,7 @@ _prerequire:
 .PHONY: _prerequire
 
 test: | _prerequire ## Run all the tests, to run a specific test run: make test `pwd`/paygate/tests/test_XPTO.py
-	args="$(filter-out $@,$(MAKECMDGOALS))" && \
+	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
 	arg_2="$${args:-${1}}" && \
 	arg_3="$${arg_2:=$(ROOT_DIR)/paygate}" && \
 	cd ${ECOMMERCE_SOURCE_PATH} && \
