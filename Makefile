@@ -69,6 +69,3 @@ lint-pylint: _prerequire
 
 lint: | lint-isort lint-pycodestyle lint-pylint ## Run Python linting
 .PHONY: lint
-
-validate: test lint ## Run Python unit tests and linting
-.PHONY: validate
