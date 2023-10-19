@@ -118,9 +118,6 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
         PayGate, this means that the `handle_processor_response` method will again call the PayGate
         to check if the basket has been payed by calling the `BackOfficeSearchTransactions` API.
         """
-        payment_page_url = "https://frontend-test.optimistic.blue/pay"
-        session_token = "A_TOKEN_THAT_WILL_BE_USED"
-
         # mock the PayGate checkout call
         with mock.patch.object(
             PayGate,
@@ -134,6 +131,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
             self.request.LANGUAGE_CODE = "en"
             self.assertEqual(
                 self.processor.handle_processor_response(
+                    # response data
                     {
                         "paymentValue": "20.00",
                         "transaction_id": "ALONGTRANSACTIONIDENTIFICATION",
@@ -142,6 +140,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                     },
                     basket=self.basket,
                 ),
+                # expected
                 HandledProcessorResponse(
                     transaction_id="ALONGTRANSACTIONIDENTIFICATION",
                     total=round(Decimal(20.00), 2),

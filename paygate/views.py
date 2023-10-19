@@ -5,6 +5,7 @@ import abc
 import json
 import logging
 import traceback
+from json.decoder import JSONDecodeError
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
@@ -23,6 +24,7 @@ from ecommerce.extensions.partner import strategy
 
 from .ip import allowed_client_ip, get_client_ip
 from .processors import PayGate
+from .utils import order_exist
 
 logger = logging.getLogger(__name__)
 
@@ -81,13 +83,16 @@ class PayGateCallbackBaseResponseView(
             PaymentProcessorResponse: The auditing model used to store the PayGate processor
                 response.
         """
-        paygate_response = (
+        if request.method == "POST":
             # if HTTP method POST then the payload is a JSON
-            json.loads(request.body)
-            if request.method == "POST"
-            else request.GET.dict()
-        )
-        logger.info(paygate_response)
+            try:
+                paygate_response = json.loads(request.body)
+            except JSONDecodeError:
+                logger.warning("Error decoding request body as JSON")
+                paygate_response = {}
+        else:
+            paygate_response = request.GET.dict()
+        logger.info("paygate_response: %s", paygate_response)
 
         # ppr = get_object_or_404(PaymentProcessorResponse, id=ppr_id)
 
@@ -106,13 +111,13 @@ class PayGateCallbackBaseResponseView(
                 basket=basket,
             )
         else:
-            logger.error("Missing 'payment_ref' parameter from request")
+            logger.warning("Missing 'payment_ref' parameter from request")
         return basket, ppr
 
 
 class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
     """
-    A server-to-server notification that informs the ecommerce if the payment on the paygate
+    A server-to-server notification that informs the Ecommerce if the payment on the PayGate
     has been with success or not.
     The decision is based on the payload of this call.
     """
@@ -131,7 +136,7 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
         This function will handle the callback request in case it is done via HTTP POST method
 
         Implementation of the server-to-server callback from PayGate to Ecommerce.
-        This method should be protected with an `callback_server_allowed_networks` paygate
+        This method should be protected with an `callback_server_allowed_networks` PayGate
         configuration with a list of allowed networks to send this POST.
 
         To view the payload of this POST, please see the `ServerCallbackExample` Schema input of
@@ -158,14 +163,15 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
         )
 
         payed_with_success = (
+            payment_processor_response and
             bool(payment_processor_response.response.get("success", False)) and
             payment_processor_response.response.get("statusCode", "") == "C"
         )
         if not payed_with_success:
             logger.warning(
-                "PayGate server callback without success and correct statusCode of 'C'"
+                "PayGate server callback without payment_ref, success or statusCode"
             )
-            return HttpResponse("Incorrect success and status code", status=412)
+            return HttpResponse("Incorrect payment_ref, success or statusCode", status=412)
 
         try:
             # Explicitly delimit operations which will be rolled back if an exception occurs.
@@ -190,7 +196,7 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
             return HttpResponseServerError("Error while handling payment - other error")
 
         # if the basket hasn't already contain an order, create one
-        if not hasattr(basket, "order"):
+        if order_exist(basket):
             # the basket already contains an order.
             # we could receive duplicated server callbacks.
             logger.warning(
@@ -247,18 +253,19 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
             disable_back_button=True,
         )
 
-        if not hasattr(basket, "order"):
+        if not order_exist(basket):
             # Received the frontend success callback before received the server-to-server callback
 
             payed_with_success = (
+                payment_processor_response and
                 bool(payment_processor_response.response.get("is_paid", False)) and
                 payment_processor_response.response.get("StatusCode", "") == "C"
             )
             if not payed_with_success:
                 logger.warning(
-                    "PayGate server callback without success and correct statusCode of 'C'"
+                    "PayGate server callback without payment_ref, success or statusCode"
                 )
-                return HttpResponse("Incorrect success and status code", status=412)
+                return HttpResponse("Incorrect payment_ref, is_paid or StatusCode", status=412)
 
             try:
                 # Explicitly delimit operations which will be rolled back if an exception occurs.
