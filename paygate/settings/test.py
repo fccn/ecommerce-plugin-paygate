@@ -33,3 +33,6 @@ PAYMENT_PROCESSOR_CONFIG={
 EXTRA_PAYMENT_PROCESSOR_URLS = {"paygate": "paygate.urls"}
 
 OSCAR_DEFAULT_CURRENCY = 'EUR'
+
+# Change the default ecommerce/settings/test.py setting so we can view more easy the test problems.
+COMPRESS_ENABLED = False

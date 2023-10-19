@@ -153,6 +153,9 @@ http://localhost:18130/admin/core/siteconfiguration/1/change/
 - disable Microfrontend for Basket Page
 - replace payment processors from `cybersource,paypal` to `paygate`
 
+To run the tests and linting inside the Ecommerce container using Devstack run::
+    make -C /edx/src/ecommerce-plugin-paygate/ test lint
+
 Callbacks
 ===============
 
