@@ -92,18 +92,22 @@ Troubleshooting
 -----------------
 
 If the service `frontend-app-payment` didn't start and has this on the docker logs::
+
     sh: 1: fedx-scripts: not found
 
 The reason was because the `npm install` were raising some error::
+
     Invalid tag name ">=^16.0.0" of package "react@>=^16.0.0": Tags may not have any characters that encodeURIComponent encodes.
 
 To fix run this inside the container::
+
     npm install --legacy-peer-deps
 
 Configuration
 ===============
 
 To develop using the devstack edit the `ecommerce/settings/private.py` file add change to::
+
     PAYMENT_PROCESSOR_CONFIG = {
         "edx": {
             "paygate": {
@@ -138,10 +142,12 @@ To develop using the devstack edit the `ecommerce/settings/private.py` file add 
 Clone the repository https://github.com/fccn/ecommerce-plugin-paygate to the `src` folder of the devstack (the parent `src` folder of the devstack folder)
 
 Install this plugin inside the ecommerce container::
+
     make dev.shell.ecommerce
     pip install -e /edx/src/ecommerce-plugin-paygate
 
 Restart ecommerce application::
+
     make dev.restart-container.ecommerce
 
 On the Open edX Ecommerce user interface it is need to activate the PayGate payment processor.
