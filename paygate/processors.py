@@ -325,13 +325,13 @@ class PayGate(BasePaymentProcessor):
                 (
                     "PayGate checkout: not succeed! "
                     "for basket=%d "
-                    "payment_id=%d "
+                    "payment_id=%s "
                     "return code=%s "
                     "shor error message=%s "
                     "long error message=%s"
                 ),
                 basket.id,
-                payment_id,
+                str(payment_id),
                 return_code,
                 short_return_message,
                 long_return_message
@@ -349,9 +349,9 @@ class PayGate(BasePaymentProcessor):
         success_payment_processor_response.save()
 
         logger.info(
-            "PayGate payment: basket=%d obtained paygate payment id=%d",
+            "PayGate payment: basket=%d obtained paygate payment id=%s",
             basket.id,
-            payment_id,
+            str(payment_id),
         )
 
         parameters = {
