@@ -1,13 +1,13 @@
 """
 PayGate payment processing views in these views the callback pages will be implemented
 """
+
 import abc
 import json
 import logging
 import traceback
 from json.decoder import JSONDecodeError
 
-from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.http import (HttpResponse, HttpResponseNotAllowed,
                          HttpResponseServerError)
@@ -17,10 +17,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 from oscar.apps.payment.exceptions import PaymentError
 from oscar.core.loading import get_class, get_model
+from paygate.utils import get_basket
 
 from ecommerce.extensions.checkout.mixins import EdxOrderPlacementMixin
 from ecommerce.extensions.checkout.utils import get_receipt_page_url
-from ecommerce.extensions.partner import strategy
 
 from .ip import allowed_client_ip, get_client_ip
 from .processors import PayGate
@@ -59,21 +59,6 @@ class PayGateCallbackBaseResponseView(
         """
         return PayGate(self.request.site)
 
-    def _get_basket(self, basket_id):
-        """
-        Get the Django Oscar Basket class from its id.
-        """
-        if not basket_id:
-            return None
-        try:
-            basket_id = int(basket_id)
-            basket = Basket.objects.get(id=basket_id)
-            basket.strategy = strategy.Selector().strategy()
-            Applicator().apply(basket, basket.owner, self.request)
-            return basket
-        except (ValueError, ObjectDoesNotExist):
-            return None
-
     def get_basket_and_record_response(self, request):
         """
         Get the basket object and save the processor response.
@@ -103,7 +88,7 @@ class PayGateCallbackBaseResponseView(
         transaction_id = paygate_response.get("payment_ref")
         if transaction_id:
             basket_id = OrderNumberGenerator().basket_id(transaction_id)
-            basket = self._get_basket(basket_id)
+            basket = get_basket(basket_id)
 
             ppr = self.payment_processor.record_processor_response(
                 paygate_response,
@@ -171,7 +156,9 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
             logger.warning(
                 "PayGate server callback without payment_ref, success or statusCode"
             )
-            return HttpResponse("Incorrect payment_ref, success or statusCode", status=412)
+            return HttpResponse(
+                "Incorrect payment_ref, success or statusCode", status=412
+            )
 
         try:
             # Explicitly delimit operations which will be rolled back if an exception occurs.
@@ -265,7 +252,9 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
                 logger.warning(
                     "PayGate server callback without payment_ref, success or statusCode"
                 )
-                return HttpResponse("Incorrect payment_ref, is_paid or StatusCode", status=412)
+                return HttpResponse(
+                    "Incorrect payment_ref, is_paid or StatusCode", status=412
+                )
 
             try:
                 # Explicitly delimit operations which will be rolled back if an exception occurs.

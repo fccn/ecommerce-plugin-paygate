@@ -1,9 +1,11 @@
+from datetime import datetime, timedelta
 from decimal import Decimal
-from unittest.mock import patch
 
 import factory
 import mock
+import requests
 from paygate.processors import PayGate
+from paygate.tests.factories import MockResponse
 
 from ecommerce.extensions.payment.processors import HandledProcessorResponse
 from ecommerce.extensions.payment.tests.processors.mixins import \
@@ -200,11 +202,13 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
         with mock.patch.object(
             PayGate,
             "_make_api_json_request",
-            return_value=[{
-                "MERCHANT_CODE": "NAU",
-                "STATUS_CODE": "C",
-                "PAYMENT_REF": self.basket.order_number,
-            }],
+            return_value=[
+                {
+                    "MERCHANT_CODE": "NAU",
+                    "STATUS_CODE": "C",
+                    "PAYMENT_REF": self.basket.order_number,
+                }
+            ],
         ) as mock__make_api_json_request:
             self.request.LANGUAGE_CODE = "en"
             self.assertEqual(
@@ -252,3 +256,60 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
 
     def test_issue_credit_error(self):
         pass
+
+    @mock.patch.object(
+        requests,
+        "post",
+        return_value=MockResponse(
+            status_code=200,
+        ),
+    )
+    def test_retry_baskets_payed_in_paygate(self, mock_ecommerce_response):
+        """
+        Test `retry_baskets_payed_in_paygate` method.
+        """
+        with mock.patch.object(
+            PayGate,
+            "_make_api_json_request",
+            return_value=[
+                {
+                    "MERCHANT_CODE": "NAU",
+                    "STATUS_CODE": "C",
+                    "PAYMENT_REF": self.basket.order_number,
+                }
+            ],
+        ) as mock_search:
+            start = datetime.now()
+            end = datetime.now() - timedelta(minutes=5)
+            self.processor.retry_baskets_payed_in_paygate(start, end, next_rows=2)
+
+        mock_search.assert_called_with(
+            "https://test.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions",
+            method="POST",
+            data={
+                "ACCESS_TOKEN": "PwdX_XXXX_YYYY",
+                "MERCHANT_CODE": "NAU",
+                "STATUS_CODE": "C",
+                "SORT_DIRECTION": "ASC",
+                "SORT_COLUMN": "PAYMENT_REF",
+                "NEXT_ROWS": 2,
+                "OFFSET_ROWS": 0,
+                "FROM_DATETIME": start.isoformat(),
+                "TO_DATETIME": end.isoformat(),
+            },
+            timeout=10,
+            basic_auth_user="NAU",
+            basic_auth_pass="APassword",
+        )
+
+        mock_ecommerce_response.assert_called_with(
+            "http://testserver.fake/payment/paygate/callback/server/",
+            json={
+                "payment_ref": self.basket.order_number,
+                "statusCode": "C",
+                "success": True,
+                # so we can differentiate on the PaymentProcessorResponse object
+                "retry_baskets_payed_in_paygate": "true",
+            },
+            timeout=10,
+        )
