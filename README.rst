@@ -176,6 +176,13 @@ Example of the server callback, change the `payment_ref` with your basked identi
 
     curl -d '{"statusCode":"C", "success":"true", "MerchantCode":"NAUFCCN", "returnCode":"ABCDEFGHI", "shortMsg":"Opera%C3%A7%C3%A3o%20bem%20sucedida", "name": "edx", "is_paid": "true", "paymentValue": "1.00", "payment_ref": "EDX-100019"}' -H "Content-Type: application/json" -X POST http://localhost:18130/payment/paygate/callback/server/
 
+VSCode
+======
+
+To make the isort work properly inside the Visual Studio Code, you should add this to your Workspace settings JSON::
+
+    "isort.args":["--settings-file", "<path to ecommerce project on host>/.isort.cfg"],
+
 License
 =======
 

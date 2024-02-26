@@ -1,7 +1,9 @@
 """
 PayGate payment processor.
 """
+
 import base64
+import datetime
 import json
 import logging
 import re
@@ -12,7 +14,8 @@ import simplejson.errors
 from django.conf import settings
 from django.urls import reverse
 from oscar.apps.payment.exceptions import GatewayError
-from oscar.core.loading import get_model
+from oscar.core.loading import get_class, get_model
+from paygate.utils import get_basket, order_exist
 
 from ecommerce.core.url_utils import get_ecommerce_url
 from ecommerce.extensions.payment.processors import (BasePaymentProcessor,
@@ -20,6 +23,7 @@ from ecommerce.extensions.payment.processors import (BasePaymentProcessor,
 
 logger = logging.getLogger(__name__)
 ProductClass = get_model("catalogue", "ProductClass")
+OrderNumberGenerator = get_class("order.utils", "OrderNumberGenerator")
 
 
 class PayGate(BasePaymentProcessor):
@@ -96,6 +100,7 @@ class PayGate(BasePaymentProcessor):
         "https://lab.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions"
     )
     DEFAULT_API_BACK_SEARCH_TRANSACTIONS_TIMEOUT_SECONDS = 10
+    DEFAULT_RETRY_CALLBACK_SUCCESS_TIMEOUT_SECONDS = 10
 
     def __init__(self, site):
         """
@@ -127,6 +132,10 @@ class PayGate(BasePaymentProcessor):
         self.api_back_search_transactions_timeout_seconds = self.configuration.get(
             "api_back_search_transactions_timeout_seconds",
             self.DEFAULT_API_BACK_SEARCH_TRANSACTIONS_TIMEOUT_SECONDS,
+        )
+        self.retry_callback_success_timeout_seconds = self.configuration.get(
+            "retry_callback_success_timeout_seconds",
+            self.DEFAULT_RETRY_CALLBACK_SUCCESS_TIMEOUT_SECONDS,
         )
         self.payment_types = self.configuration.get(
             "payment_types",
@@ -334,7 +343,7 @@ class PayGate(BasePaymentProcessor):
                 str(payment_id),
                 return_code,
                 short_return_message,
-                long_return_message
+                long_return_message,
             )
 
             self._raise_api_error(
@@ -575,3 +584,91 @@ class PayGate(BasePaymentProcessor):
             exc_info=True,
         )
         raise GatewayError(error)
+
+    def retry_baskets_payed_in_paygate(
+        self,
+        from_datetime: datetime.datetime,
+        to_datetime: datetime.datetime,
+        offset_rows=0,
+        next_rows=100,
+    ):
+        """
+        Recover PayGate transactions that we haven't received the server call back.
+        Search PayGate transactions that has been completed on a time range and
+        that haven't been marked as payed inside the ecommerce.
+        """
+        paygate_back_search_transactions_data = {
+            "ACCESS_TOKEN": self.access_token,
+            "MERCHANT_CODE": self.merchant_code,
+            # search only completed transactions
+            "STATUS_CODE": "C",
+            # Sorting parameter. Sort results ('ASC'ending or 'DESC'ending)
+            # For this call we just need to know if there is a single one.
+            "SORT_DIRECTION": "ASC",
+            # Sorting parameter. Sort results by the specified column name.
+            "SORT_COLUMN": "PAYMENT_REF",
+            # Paging parameter. How many rows to retrieve from the result set.
+            "NEXT_ROWS": next_rows,
+            # Paging parameter. How many rows to skip from the result set
+            "OFFSET_ROWS": offset_rows,
+            # Filter by posted transaction datetime. If not null, only transactions
+            # with posted date greater or equal to the value supplied will be returned.
+            "FROM_DATETIME": from_datetime.isoformat(),
+            # Filter by posted transaction datetime. If not null, only transactions
+            # with posted date less or equal to the value supplied will be returned.
+            "TO_DATETIME": to_datetime.isoformat(),
+        }
+        response_data = self._make_api_json_request(
+            self.api_back_search_transactions,
+            method="POST",
+            data=paygate_back_search_transactions_data,
+            timeout=self.api_back_search_transactions_timeout_seconds,
+            basic_auth_user=self.api_basic_auth_user,
+            basic_auth_pass=self.api_basic_auth_pass,
+        )
+        # it should be a single item that have been payed
+        for paygate_transaction in response_data:
+            payment_ref = paygate_transaction.get("PAYMENT_REF")
+            basket_id = OrderNumberGenerator().basket_id(payment_ref)
+            if not basket_id:
+                logger.warning(
+                    "Can't reverse the basket_id from payment_ref=%s", payment_ref
+                )
+                continue
+            basket = get_basket(basket_id)
+            if not basket:
+                logger.warning("Can't find Basket for payment_ref=%s", payment_ref)
+                continue
+
+            if order_exist(basket):
+                logger.info("Order already exists for payment_ref=%s", payment_ref)
+                continue
+
+            logger.info("Retrying callback server for payment_ref=%s", payment_ref)
+
+            # call the callback server to retry
+            ecommerce_callback_server = get_ecommerce_url(
+                reverse("ecommerce_plugin_paygate:callback_server")
+            )
+            request_data = {
+                "payment_ref": payment_ref,
+                "statusCode": "C",
+                "success": True,
+                # so we can differentiate on the PaymentProcessorResponse object
+                "retry_baskets_payed_in_paygate": "true",
+            }
+            response = requests.post(
+                ecommerce_callback_server,
+                json=request_data,
+                timeout=self.retry_callback_success_timeout_seconds,
+            )
+            if response.status_code == 200:
+                logger.info("Successfully retried for payment_ref=%s", payment_ref)
+
+        if len(response_data) == next_rows:
+            self.retry_baskets_payed_in_paygate(
+                from_datetime=from_datetime,
+                to_datetime=to_datetime,
+                offset_rows=offset_rows + next_rows,
+                next_rows=next_rows,
+            )
