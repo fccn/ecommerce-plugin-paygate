@@ -15,6 +15,7 @@ class MockResponse:
         """
         return self.json_data
 
+    @property
     def content(self):
         """
         The Json data
