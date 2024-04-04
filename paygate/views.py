@@ -77,7 +77,7 @@ class PayGateCallbackBaseResponseView(
                 paygate_response = {}
         else:
             paygate_response = request.GET.dict()
-        logger.info("paygate_response: %s", paygate_response)
+        # logger.info("paygate_response: %s", paygate_response)
 
         # ppr = get_object_or_404(PaymentProcessorResponse, id=ppr_id)
 
