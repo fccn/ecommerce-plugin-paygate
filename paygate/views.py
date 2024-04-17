@@ -121,14 +121,16 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
         This function will handle the callback request in case it is done via HTTP POST method
 
         Implementation of the server-to-server callback from PayGate to Ecommerce.
-        This method should be protected with an `callback_server_allowed_networks` PayGate
-        configuration with a list of allowed networks to send this POST.
 
         To view the payload of this POST, please see the `ServerCallbackExample` Schema input of
         the PayGate Swagger.
 
         In case of some exception/error this method will send only the HTTP response status code
-        without an user interface, because this method should be called from the PayGate.
+        without an user interface, because this method should be called from the PayGate server.
+
+        Internally this method will call the BackOfficeSearchTransactions to double check that the
+        transaction is really payed. With this design decision we don't need to protect the
+        callbacks URLs by IP.
         """
 
         allowed_networks = self.payment_processor.callback_server_allowed_networks
@@ -147,17 +149,12 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
             request
         )
 
-        payed_with_success = (
-            payment_processor_response and
-            bool(payment_processor_response.response.get("success", False)) and
-            payment_processor_response.response.get("statusCode", "") == "C"
-        )
-        if not payed_with_success:
+        if not basket:
             logger.warning(
-                "PayGate server callback without payment_ref, success or statusCode"
+                "PayGate server callback without payment_ref"
             )
             return HttpResponse(
-                "Incorrect payment_ref, success or statusCode", status=412
+                "Incorrect payment_ref", status=412
             )
 
         try:
@@ -215,10 +212,9 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
     success.
     This callback should NOT be used to fullfill the order.
 
-    We should just check if we have received the callback server-to-server request. If yes we
-    should just inform the student that he will be enrolled to the course in a couple of moments.
-    If not we should inform the student that we are still waiting to receive the payment
-    notification.
+    Internally this method will call the BackOfficeSearchTransactions to double check that the
+    transaction is really payed. With this design decision we don't need to protect the
+    callbacks URLs by IP.
     """
 
     def get(
@@ -242,19 +238,6 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
 
         if not order_exist(basket):
             # Received the frontend success callback before received the server-to-server callback
-
-            payed_with_success = (
-                payment_processor_response and
-                bool(payment_processor_response.response.get("is_paid", False)) and
-                payment_processor_response.response.get("StatusCode", "") == "C"
-            )
-            if not payed_with_success:
-                logger.warning(
-                    "PayGate server callback without payment_ref, success or statusCode"
-                )
-                return HttpResponse(
-                    "Incorrect payment_ref, is_paid or StatusCode", status=412
-                )
 
             try:
                 # Explicitly delimit operations which will be rolled back if an exception occurs.
