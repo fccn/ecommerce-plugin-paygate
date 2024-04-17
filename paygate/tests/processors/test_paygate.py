@@ -22,9 +22,11 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
 
     # Used by the upstream `PaymentProcessorTestCaseMixin` to know what payment processor we are
     # testing.
-    maxDiff = None
     processor_name = "paygate"
     processor_class = PayGate
+
+    # full diff on failing
+    maxDiff = None
 
     def setUp(self):
         """
@@ -207,19 +209,18 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                     "MERCHANT_CODE": "NAU",
                     "STATUS_CODE": "C",
                     "PAYMENT_REF": self.basket.order_number,
+                    "PAYMENT_AMOUNT": "20.00",
+                    "TRANSACTION_ID": "ALONGTRANSACTIONIDENTIFICATION",
+                    "CARD_MASKED_PAN": "1234",
+                    "PAYMENT_TYPE_CODE": "REFMB",
                 }
             ],
         ) as mock__make_api_json_request:
             self.request.LANGUAGE_CODE = "en"
             self.assertEqual(
                 self.processor.handle_processor_response(
-                    # response data
-                    {
-                        "paymentValue": "20.00",
-                        "transaction_id": "ALONGTRANSACTIONIDENTIFICATION",
-                        "card_masked_pan": "1234",
-                        "payment_type_code": "REFMB",
-                    },
+                    # response data is ignored
+                    {},
                     basket=self.basket,
                 ),
                 # expected
@@ -312,4 +313,32 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 "retry_baskets_payed_in_paygate": "true",
             },
             timeout=10,
+        )
+
+    @mock.patch.object(
+        PayGate,
+        "_make_api_json_request",
+        return_value=MockResponse(
+            status_code=200,
+        ),
+    )
+    def test_mark_test_payment_as_paid(self, mock_mark_test_payment_as_paid_call):
+        """
+        Test `mark_test_payment_as_paid` method.
+        """
+        success = self.processor.mark_test_payment_as_paid(self.basket)
+
+        self.assertTrue(success)
+        mock_mark_test_payment_as_paid_call.assert_called_with(
+            "https://test.optimistic.blue/paygateWS/api/MarkTestPaymentAsPaid",
+            method="POST",
+            data={
+                "ACCESS_TOKEN": "PwdX_XXXX_YYYY",
+                "MERCHANT_CODE": "NAU",
+                "PAYMENT_REF": self.basket.order_number,
+            },
+            basket=self.basket,
+            timeout=10,
+            basic_auth_user="NAU",
+            basic_auth_pass="APassword",
         )

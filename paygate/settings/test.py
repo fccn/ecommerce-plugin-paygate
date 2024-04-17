@@ -12,6 +12,7 @@ PAYMENT_PROCESSOR_CONFIG={
             "merchant_code": "NAU",
             "api_checkout_url": 'https://test.optimistic.blue/paygateWS/api/CheckOut',
             "api_back_search_transactions": "https://test.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions",
+            "mark_test_payment_as_paid_url": "https://test.optimistic.blue/paygateWS/api/MarkTestPaymentAsPaid",
             "api_basic_auth_user": "NAU",
             "api_basic_auth_pass": "APassword",
             "payment_types": ["VISA", "MASTERCARD", "AMEX", "PAYPAL", "MBWAY", "REFMB", "DUC"]
@@ -23,6 +24,7 @@ PAYMENT_PROCESSOR_CONFIG={
             "merchant_code": "other_NAU",
             "api_checkout_url": 'https://test_other.optimistic.blue/paygateWS/api/CheckOut',
             "api_back_search_transactions": "https://test_other.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions",
+            "mark_test_payment_as_paid_url": "https://test_other.optimistic.blue/paygateWS/api/MarkTestPaymentAsPaid",
             "api_basic_auth_user": "other_NAU",
             "api_basic_auth_pass": "other_APassword",
             "payment_types": ["VISA", "MBWAY", "REFMB", "DUC"]

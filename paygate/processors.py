@@ -6,7 +6,6 @@ import base64
 import datetime
 import json
 import logging
-import re
 from decimal import Decimal
 
 import requests
@@ -59,6 +58,7 @@ class PayGate(BasePaymentProcessor):
         api_checkout_url: https://lab.optimistic.blue/paygateWS/api/CheckOut
         api_checkout_req_timeout_sec: 10 # optional
         api_back_search_transactions: https://lab.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions
+        mark_test_payment_as_paid_url: https://lab.optimistic.blue/paygateWS/api/MarkTestPaymentAsPaid
         api_back_search_transactions_timeout_seconds: 10 # optional
         api_basic_auth_user: username
         api_basic_auth_pass: password
@@ -101,6 +101,9 @@ class PayGate(BasePaymentProcessor):
     )
     DEFAULT_API_BACK_SEARCH_TRANSACTIONS_TIMEOUT_SECONDS = 10
     DEFAULT_RETRY_CALLBACK_SUCCESS_TIMEOUT_SECONDS = 10
+
+    DEFAULT_MARK_TEST_PAYMENT_AS_PAID_URL = "https://lab.optimistic.blue/paygateWS/api/MarkTestPaymentAsPaid"
+    DEFAULT_MARK_TEST_PAYMENT_AS_PAID_REQUEST_TIMEOUT_SECONDS = 10
 
     def __init__(self, site):
         """
@@ -153,6 +156,14 @@ class PayGate(BasePaymentProcessor):
         show_title_default = payment_processors_config_count > 1
         self.TITLE = self.configuration.get(
             "title", "PayGate" if show_title_default else None
+        )
+
+        self.mark_test_payment_as_paid_url = self.configuration.get(
+            "mark_test_payment_as_paid_url", self.DEFAULT_MARK_TEST_PAYMENT_AS_PAID_URL
+        )
+        self.mark_test_payment_as_paid_req_timeout_sec = self.configuration.get(
+            "mark_test_payment_as_paid_req_timeout_sec",
+            self.DEFAULT_MARK_TEST_PAYMENT_AS_PAID_REQUEST_TIMEOUT_SECONDS,
         )
 
     @property
@@ -211,7 +222,7 @@ class PayGate(BasePaymentProcessor):
         parameters as a dictionary.
         Feel free to add the necessary logic to obtain the data that your payment processor needs,
         additionally you must send the variable payment_page_url with the url of your payment
-        processor, Hgre you will also send the callback pages, so your payment processor will
+        processor, here you will also send the callback pages, so your payment processor will
         know where to redirect you when a transaction is executed, to see in which variable you
         should send them, check the documentation of
         your payment processor.
@@ -404,11 +415,23 @@ class PayGate(BasePaymentProcessor):
 
     def handle_processor_response(self, response, basket=None):
         """
-        Verify that the payment was successfully processed -- because Trust but Verify.
+        Verify that the payment was successfully processed -- because "Trust, but verify".
         If payment did not succeed, raise GatewayError and log error.
         Keep in mind that your response will come with different information, so you must modify
         the fields which are obtained from the response and checked the logic that it's used to
         verify if the payment was successful.
+
+        On PayGate we aren't using any response field.
+        We use the Basket passed by argument to find on PayGate if it has been payed, with this
+        decision we are using the premise "Trust, but verify".
+
+        So we internally on this method we are calling again the PayGate.
+        Search PayGate transactions for the basket that has been completed, it should be a single
+        transaction on that state. If true we have double checked that the transaction has been completed
+        with success and the user as payed the basket.
+        It is very important to double check if it has been payed, because with this feature we
+        don't need th protect by IP address the callback success URL and we can just call the
+        success notification callback on the check_if_is_payed action on admin.
 
         Arguments:
           response (dict): Dictionary of parameters received from the payment processor.
@@ -422,46 +445,6 @@ class PayGate(BasePaymentProcessor):
         Raises:
           GatewayError: Indicates a general error on the part of the processor.
           Feel free to implement your own exceptions depended on your payment processor.
-        """
-
-        # Example: 1.00EUR
-        payment_value = response.get("paymentValue")
-
-        # Get total payed
-        total = Decimal(" ".join(re.findall("[0-9.]+", payment_value)))
-
-        # The currency isn't on a separate field
-        currency = " ".join(re.findall("[a-zA-Z]+", response.get("paymentValue")))
-        currency = currency if currency else basket.currency
-
-        # Save the transaction ID returned by the payment processor.
-        # It isn't the Internal PayGate Payment ID, but the upstream id depending of the payment
-        # type choosen by the user inside the PayGate.
-        transaction_id = response.get("transaction_id")
-
-        # Save only a mask of the card
-        card_number = response.get("card_masked_pan", "")
-
-        # Payment type (VISA, MASTERCARD, PAYPAL, MBWAY, REFMB,...)
-        # We use the `card_type` to save the payment type used.
-        card_type = response.get("payment_type_code", "")
-
-        if not self._check_if_basket_has_been_payed_in_paygate(basket):
-            raise GatewayError("PayGate couldn't double check if basket has been payed")
-
-        return HandledProcessorResponse(
-            transaction_id=transaction_id,
-            total=total,
-            currency=currency,
-            card_number=card_number,
-            card_type=card_type,
-        )
-
-    def _check_if_basket_has_been_payed_in_paygate(self, basket):
-        """
-        Search PayGate transactions for the basket that has been completed, it should be a single
-        transaction on that state. If true we double check that the transaction has been completed
-        with success and the user as payed the basket.
         """
         paygate_back_search_transactions_data = {
             "ACCESS_TOKEN": self.access_token,
@@ -480,7 +463,7 @@ class PayGate(BasePaymentProcessor):
             # Paging parameter. How many rows to skip from the result set
             "OFFSET_ROWS": 0,
         }
-        response_data = self._make_api_json_request(
+        search_response_data = self._make_api_json_request(
             self.api_back_search_transactions,
             method="POST",
             data=paygate_back_search_transactions_data,
@@ -489,15 +472,44 @@ class PayGate(BasePaymentProcessor):
             basic_auth_user=self.api_basic_auth_user,
             basic_auth_pass=self.api_basic_auth_pass,
         )
+        confirmed_payed_on_paygate = False
         # it should be a single item that have been payed
-        if len(response_data) == 1:
-            paygate_transaction = response_data[0]
-            return (
+        if len(search_response_data) == 1:
+            paygate_transaction = search_response_data[0]
+            confirmed_payed_on_paygate = (
                 (paygate_transaction.get("MERCHANT_CODE") == self.merchant_code) and
                 (paygate_transaction.get("STATUS_CODE") == "C") and
                 (paygate_transaction.get("PAYMENT_REF") == basket.order_number)
             )
-        return False
+        if not confirmed_payed_on_paygate:
+            raise GatewayError("PayGate couldn't double check if basket has been payed")
+
+        # Example: 1.00
+        total = Decimal(paygate_transaction.get("PAYMENT_AMOUNT"))
+
+        # The currency isn't available on Search PayGate transactions
+        # /api/BackOfficeSearchTransactions
+        currency = basket.currency
+
+        # Save the transaction ID returned by the payment processor.
+        # It isn't the Internal PayGate Payment ID, but the upstream id depending of the payment
+        # type chosen by the user inside the PayGate.
+        transaction_id = paygate_transaction.get("TRANSACTION_ID")
+
+        # Save only a mask of the card
+        card_number = paygate_transaction.get("CARD_MASKED_PAN", "")
+
+        # Payment type (VISA, MASTERCARD, PAYPAL, MBWAY, REFMB,...)
+        # We use the `card_type` to save the payment type used.
+        card_type = paygate_transaction.get("PAYMENT_TYPE_CODE", "")
+
+        return HandledProcessorResponse(
+            transaction_id=transaction_id,
+            total=total,
+            currency=currency,
+            card_number=card_number,
+            card_type=card_type,
+        )
 
     def issue_credit(
         self, order_number, basket, reference_number, amount, currency
@@ -647,23 +659,7 @@ class PayGate(BasePaymentProcessor):
             logger.info("Retrying callback server for payment_ref=%s", payment_ref)
 
             # call the callback server to retry
-            ecommerce_callback_server = get_ecommerce_url(
-                reverse("ecommerce_plugin_paygate:callback_server")
-            )
-            request_data = {
-                "payment_ref": payment_ref,
-                "statusCode": "C",
-                "success": True,
-                # so we can differentiate on the PaymentProcessorResponse object
-                "retry_baskets_payed_in_paygate": "true",
-            }
-            response = requests.post(
-                ecommerce_callback_server,
-                json=request_data,
-                timeout=self.retry_callback_success_timeout_seconds,
-            )
-            if response.status_code == 200:
-                logger.info("Successfully retried for payment_ref=%s", payment_ref)
+            self.send_callback_to_itself_to_retry(payment_ref=payment_ref)
 
         if len(response_data) == next_rows:
             self.retry_baskets_payed_in_paygate(
@@ -672,3 +668,61 @@ class PayGate(BasePaymentProcessor):
                 offset_rows=offset_rows + next_rows,
                 next_rows=next_rows,
             )
+
+    def send_callback_to_itself_to_retry(self, payment_ref=None, basket=None) -> bool:
+        """
+        Send the success callback to itself.
+        The callback will also call the PayGate to double check.
+        """
+        if basket:
+            payment_ref = basket.order_number
+
+        logger.info("Sending callback to check if payment_ref=%s has been payed", payment_ref)
+        # call the callback server to retry
+        ecommerce_callback_server = get_ecommerce_url(
+            reverse("ecommerce_plugin_paygate:callback_server")
+        )
+        request_data = {
+            "payment_ref": payment_ref,
+            "statusCode": "C",
+            "success": True,
+            # so we can differentiate on the PaymentProcessorResponse object
+            "retry_baskets_payed_in_paygate": "true",
+        }
+        response = requests.post(
+            ecommerce_callback_server,
+            json=request_data,
+            timeout=self.retry_callback_success_timeout_seconds,
+        )
+        success = response.status_code == 200
+        if success:
+            logger.info("Successfully retried for payment_ref=%s", payment_ref)
+        else:
+            logger.info("Unsuccess on retried for payment_ref=%s", payment_ref)
+        return success
+
+    def mark_test_payment_as_paid(self, basket=None) -> bool:
+        """
+        Make a Paygate payment as paid on Paygate.
+        This action is only available on testing instances of Paygate.
+        """
+        payment_ref = basket.order_number
+        request_data = {
+            "ACCESS_TOKEN": self.access_token,
+            "MERCHANT_CODE": self.merchant_code,
+            "PAYMENT_REF": payment_ref,
+        }
+        try:
+            # if not 200 throws GatewayError
+            self._make_api_json_request(
+                self.mark_test_payment_as_paid_url,
+                method="POST",
+                data=request_data,
+                basket=basket,
+                timeout=self.mark_test_payment_as_paid_req_timeout_sec,
+                basic_auth_user=self.api_basic_auth_user,
+                basic_auth_pass=self.api_basic_auth_pass,
+            )
+            return True
+        except GatewayError:
+            return False
