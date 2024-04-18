@@ -17,14 +17,13 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 from oscar.apps.payment.exceptions import PaymentError
 from oscar.core.loading import get_class, get_model
-from paygate.utils import get_basket
 
 from ecommerce.extensions.checkout.mixins import EdxOrderPlacementMixin
 from ecommerce.extensions.checkout.utils import get_receipt_page_url
 
 from .ip import allowed_client_ip, get_client_ip
 from .processors import PayGate
-from .utils import order_exist
+from .utils import get_basket_from_payment_ref, order_exist
 
 logger = logging.getLogger(__name__)
 
@@ -85,14 +84,13 @@ class PayGateCallbackBaseResponseView(
         basket = None
         ppr = None
 
-        transaction_id = paygate_response.get("payment_ref")
-        if transaction_id:
-            basket_id = OrderNumberGenerator().basket_id(transaction_id)
-            basket = get_basket(basket_id)
+        payment_ref = paygate_response.get("payment_ref")
+        if payment_ref:
+            basket = get_basket_from_payment_ref(payment_ref)
 
             ppr = self.payment_processor.record_processor_response(
                 paygate_response,
-                transaction_id=transaction_id,
+                transaction_id=payment_ref,
                 basket=basket,
             )
         else:

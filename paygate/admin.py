@@ -25,7 +25,7 @@ class BasketAdminExtendedPaygate(BasketAdminExtended):
         for basket in queryset:
             site = basket.site
             paygate = PayGate(site)
-            success = paygate.send_callback_to_itself_to_retry(basket=basket)
+            success = paygate.send_callback_to_itself_to_retry(basket)
             if success:
                 self.message_user(
                     request,

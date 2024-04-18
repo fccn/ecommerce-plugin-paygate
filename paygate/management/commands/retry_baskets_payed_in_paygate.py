@@ -32,16 +32,16 @@ class Command(BaseCommand):
         parser.add_argument(
             "--start",
             type=str,
-            help="The start date period to retry, incompatible with the --delta-in-minutes",
+            help="The start date period to retry, incompatible with the --delta_in_minutes",
         )
         parser.add_argument(
             "--end",
             type=str,
             default=None,
-            help="The end date period to retry, incompatible with the --delta-in-minutes",
+            help="The end date period to retry, incompatible with the --delta_in_minutes",
         )
         parser.add_argument(
-            "--delta-in-minutes",
+            "--delta_in_minutes",
             type=str,
             default=1440,  # 1 day
             help="The number of seconds to retry, default to last day",
@@ -57,12 +57,12 @@ class Command(BaseCommand):
             start = datetime.strptime(kwargs["start"], "%Y-%m-%d %H:%M:%S")
             end = datetime.strptime(kwargs["end"], "%Y-%m-%d %H:%M:%S")
         else:
-            delta_in_minutes = kwargs["delta-in-minutes"]
+            delta_in_minutes = int(kwargs["delta_in_minutes"])
             now = datetime.now()
             end = now
             start = now - timedelta(minutes=delta_in_minutes)
 
         site_domain = kwargs["site"]
-        site = Site.objects.filter(domain=site_domain)
+        site = Site.objects.filter(domain=site_domain).first()
         paygate = PayGate(site)
         paygate.retry_baskets_payed_in_paygate(start, end)
