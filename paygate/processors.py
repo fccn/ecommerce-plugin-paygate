@@ -358,9 +358,7 @@ class PayGate(BasePaymentProcessor):
             )
 
             self._raise_api_error(
-                self._raise_api_error(
-                    "Not success", response_data=response_data, basket=basket
-                )
+                "Not success", response_data=response_data, basket=basket
             )
 
         # Save payment processor response
