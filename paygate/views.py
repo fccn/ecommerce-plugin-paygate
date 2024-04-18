@@ -156,11 +156,9 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
             )
 
         try:
-            # Explicitly delimit operations which will be rolled back if an exception occurs.
-            with transaction.atomic():
-                # This method have to be invoked in order to handle a payment,
-                # this method could raise an PaymentError exception.
-                self.handle_payment(payment_processor_response.response, basket)
+            # This method have to be invoked in order to handle a payment,
+            # this method could raise an PaymentError exception.
+            self.handle_payment(payment_processor_response.response, basket)
         except PaymentError:
             logger.exception(
                 "PayGate server callback error while handling payment with a payment error for basket [%d]",
@@ -238,11 +236,9 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
             # Received the frontend success callback before received the server-to-server callback
 
             try:
-                # Explicitly delimit operations which will be rolled back if an exception occurs.
-                with transaction.atomic():
-                    # This method have to be invoked in order to handle a payment,
-                    # this method could raise an PaymentError exception.
-                    self.handle_payment(payment_processor_response.response, basket)
+                # This method have to be invoked in order to handle a payment,
+                # this method could raise an PaymentError exception.
+                self.handle_payment(payment_processor_response.response, basket)
             except PaymentError:
                 return redirect(self.payment_processor.error_url)
             except Exception:  # pylint: disable=broad-except
