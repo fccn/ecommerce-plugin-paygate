@@ -470,6 +470,10 @@ class PayGate(BasePaymentProcessor):
             basic_auth_user=self.api_basic_auth_user,
             basic_auth_pass=self.api_basic_auth_pass,
         )
+        logger.info(
+            "Search Transactions on PayGate received the response data: [%s]",
+            search_response_data,
+        )
         confirmed_payed_on_paygate = False
         # it should be a single item that have been payed
         if len(search_response_data) == 1:
@@ -701,8 +705,8 @@ class PayGate(BasePaymentProcessor):
 
     def mark_test_payment_as_paid(self, basket=None) -> bool:
         """
-        Make a Paygate payment as paid on Paygate.
-        This action is only available on testing instances of Paygate.
+        Make a PayGate payment as paid on PayGate.
+        This action is only available on testing instances of PayGate.
         """
         payment_ref = basket.order_number
         request_data = {
@@ -722,5 +726,6 @@ class PayGate(BasePaymentProcessor):
                 basic_auth_pass=self.api_basic_auth_pass,
             )
             return True
-        except GatewayError:
+        except GatewayError as ge:
+            logger.warning("GatewayError error when mark_test_payment_as_paid [%s]", ge)
             return False
