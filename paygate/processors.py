@@ -496,12 +496,12 @@ class PayGate(BasePaymentProcessor):
         # type chosen by the user inside the PayGate.
         transaction_id = paygate_transaction.get("TRANSACTION_ID")
 
-        # Save only a mask of the card
-        card_number = paygate_transaction.get("CARD_MASKED_PAN", "")
-
-        # Payment type (VISA, MASTERCARD, PAYPAL, MBWAY, REFMB,...)
+        # Payment type (VISA, MASTERCARD, PAYPAL, MBWAY, REFMB, DUC, ...)
         # We use the `card_type` to save the payment type used.
-        card_type = paygate_transaction.get("PAYMENT_TYPE_CODE", "")
+        card_type = paygate_transaction.get("PAYMENT_TYPE_CODE", "PayGate")
+
+        # Save only a mask of the card
+        card_number = paygate_transaction.get("CARD_MASKED_PAN", card_type)
 
         return HandledProcessorResponse(
             transaction_id=transaction_id,
