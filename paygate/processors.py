@@ -537,6 +537,12 @@ class PayGate(BasePaymentProcessor):
         Execute an API call to the PayGate using an HTTP `method` with some `data` as payload to an
         ecommerce `basket`.
         """
+        if basket:
+            self.record_processor_response(
+                {'url': url, 'timeout': timeout, 'data': data},
+                transaction_id=basket.order_number,
+                basket=basket,
+            )
         requests_func = getattr(requests, method.lower())
 
         # All calls to PayGate require basic authentication has the 1st layer of security.
