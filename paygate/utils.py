@@ -6,6 +6,7 @@ from ecommerce.extensions.partner import strategy
 Order = get_model("order", "Order")
 Basket = get_model("basket", "Basket")
 Applicator = get_class("offer.applicator", "Applicator")
+OrderNumberGenerator = get_class("order.utils", "OrderNumberGenerator")
 
 
 def order_exist(basket: Basket) -> bool:
@@ -25,7 +26,16 @@ def get_basket(basket_id, request=None):
         basket_id = int(basket_id)
         basket = Basket.objects.get(id=basket_id)
         basket.strategy = strategy.Selector().strategy()
-        Applicator().apply(basket, basket.owner, request=request)
+        if request:
+            Applicator().apply(basket, basket.owner, request=request)
         return basket
     except (ValueError, ObjectDoesNotExist):
         return None
+
+
+def get_basket_from_payment_ref(payment_ref):
+    """
+    Get the Django Oscar Basket from payment_ref used by PayGate.
+    """
+    basket_id = OrderNumberGenerator().basket_id(payment_ref)
+    return get_basket(basket_id)

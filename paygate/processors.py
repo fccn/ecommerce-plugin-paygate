@@ -14,7 +14,7 @@ from django.conf import settings
 from django.urls import reverse
 from oscar.apps.payment.exceptions import GatewayError
 from oscar.core.loading import get_class, get_model
-from paygate.utils import get_basket, order_exist
+from paygate.utils import get_basket_from_payment_ref, order_exist
 
 from ecommerce.core.url_utils import get_ecommerce_url
 from ecommerce.extensions.payment.processors import (BasePaymentProcessor,
@@ -649,13 +649,7 @@ class PayGate(BasePaymentProcessor):
         # it should be a single item that have been payed
         for paygate_transaction in response_data:
             payment_ref = paygate_transaction.get("PAYMENT_REF")
-            basket_id = OrderNumberGenerator().basket_id(payment_ref)
-            if not basket_id:
-                logger.warning(
-                    "Can't reverse the basket_id from payment_ref=%s", payment_ref
-                )
-                continue
-            basket = get_basket(basket_id)
+            basket = get_basket_from_payment_ref(payment_ref)
             if not basket:
                 logger.warning("Can't find Basket for payment_ref=%s", payment_ref)
                 continue
@@ -667,7 +661,7 @@ class PayGate(BasePaymentProcessor):
             logger.info("Retrying callback server for payment_ref=%s", payment_ref)
 
             # call the callback server to retry
-            self.send_callback_to_itself_to_retry(payment_ref=payment_ref)
+            self.send_callback_to_itself_to_retry(basket)
 
         if len(response_data) == next_rows:
             self.retry_baskets_payed_in_paygate(
@@ -677,7 +671,7 @@ class PayGate(BasePaymentProcessor):
                 next_rows=next_rows,
             )
 
-    def send_callback_to_itself_to_retry(self, payment_ref=None, basket=None) -> bool:
+    def send_callback_to_itself_to_retry(self, basket) -> bool:
         """
         Send the success callback to itself.
         The callback will also call the PayGate to double check.
@@ -687,7 +681,7 @@ class PayGate(BasePaymentProcessor):
 
         logger.info("Sending callback to check if payment_ref=%s has been payed", payment_ref)
         # call the callback server to retry
-        ecommerce_callback_server = get_ecommerce_url(
+        ecommerce_callback_server = basket.site.siteconfiguration.build_ecommerce_url(
             reverse("ecommerce_plugin_paygate:callback_server")
         )
         request_data = {
