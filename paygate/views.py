@@ -33,6 +33,10 @@ OrderNumberGenerator = get_class("order.utils", "OrderNumberGenerator")
 PaymentProcessorResponse = get_model("payment", "PaymentProcessorResponse")
 
 
+class PayGateCallbackException(Exception):
+    pass
+
+
 class PayGateCallbackBaseResponseView(
     EdxOrderPlacementMixin, View, metaclass=abc.ABCMeta
 ):
@@ -97,6 +101,57 @@ class PayGateCallbackBaseResponseView(
             logger.warning("Missing 'payment_ref' parameter from request")
         return basket, ppr
 
+    def handle_payment_and_create_order(self, request, basket, payment_processor_response):
+        """
+        Handle payment and if need create_order
+        """
+        if order_exist(basket):
+            # the basket already contains an order.
+            # we could receive duplicated server callbacks.
+            logger.warning(
+                "PayGate callback the basket already has an order for basket [%d]",
+                basket.id,
+            )
+            return False
+
+        try:
+            # This method have to be invoked in order to handle a payment,
+            # this method could raise an PaymentError exception.
+            self.handle_payment(payment_processor_response.response, basket)
+        except PaymentError as exc:
+            logger.exception(
+                "PayGate server callback error while handling payment with a payment error for basket [%d]",
+                basket.id,
+            )
+            raise PayGateCallbackException(
+                "Error while handling payment - payment error"
+            ) from exc
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception(
+                "PayGate server callback error while handling payment with another error for basket [%d]",
+                basket.id,
+            )
+            logger.error(traceback.format_exc())
+            raise PayGateCallbackException("Error while handling payment - other error") from exc
+
+        # create an order for the basket
+        try:
+            order = self.create_order(request, basket)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception(
+                "PayGate server callback error while creating order for basket [%d]",
+                basket.id,
+            )
+            raise PayGateCallbackException("Error while creating order") from exc
+
+        # post order
+        try:
+            self.handle_post_order(order)
+        except Exception:  # pylint: disable=broad-except
+            self.log_order_placement_exception(basket.order_number, basket.id)
+
+        return True
+
 
 class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
     """
@@ -156,48 +211,9 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
             )
 
         try:
-            # This method have to be invoked in order to handle a payment,
-            # this method could raise an PaymentError exception.
-            self.handle_payment(payment_processor_response.response, basket)
-        except PaymentError:
-            logger.exception(
-                "PayGate server callback error while handling payment with a payment error for basket [%d]",
-                basket.id,
-            )
-            return HttpResponseServerError(
-                "Error while handling payment - payment error"
-            )
-        except Exception:  # pylint: disable=broad-except
-            logger.exception(
-                "PayGate server callback error while handling payment with another error for basket [%d]",
-                basket.id,
-            )
-            logger.error(traceback.format_exc())
-            return HttpResponseServerError("Error while handling payment - other error")
-
-        # if the basket hasn't already contain an order, create one
-        if order_exist(basket):
-            # the basket already contains an order.
-            # we could receive duplicated server callbacks.
-            logger.warning(
-                "PayGate server callback the basket already has an order for basket [%d]",
-                basket.id,
-            )
-        else:
-            # create an order for the basket
-            try:
-                order = self.create_order(request, basket)
-            except Exception:  # pylint: disable=broad-except
-                logger.exception(
-                    "PayGate server callback error while creating order for basket [%d]",
-                    basket.id,
-                )
-                return HttpResponseServerError("Error while creating order")
-
-            try:
-                self.handle_post_order(order)
-            except Exception:  # pylint: disable=broad-except
-                self.log_order_placement_exception(basket.order_number, basket.id)
+            self.handle_payment_and_create_order(request, basket, payment_processor_response)
+        except PayGateCallbackException as exp:
+            return HttpResponseServerError(str(exp))
 
         return HttpResponse("Received server callback with success")
 
@@ -232,36 +248,10 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
             disable_back_button=True,
         )
 
-        if not order_exist(basket):
-            # Received the frontend success callback before received the server-to-server callback
-
-            try:
-                # This method have to be invoked in order to handle a payment,
-                # this method could raise an PaymentError exception.
-                self.handle_payment(payment_processor_response.response, basket)
-            except PaymentError:
-                return redirect(self.payment_processor.error_url)
-            except Exception:  # pylint: disable=broad-except
-                logger.exception(
-                    "Attempts to handle payment for basket [%d] failed.", basket.id
-                )
-                logger.error(traceback.format_exc())
-                return redirect(receipt_url)
-
-            try:
-                order = self.create_order(request, basket)
-            except Exception:  # pylint: disable=broad-except
-                return redirect(receipt_url)
-
-            try:
-                self.handle_post_order(order)
-            except Exception:  # pylint: disable=broad-except
-                self.log_order_placement_exception(basket.order_number, basket.id)
-
-            return redirect(receipt_url)
-        # else
-        #   basked already has an order, ok the PayGate already has successfully called the server
-        #      callback.
+        try:
+            self.handle_payment_and_create_order(request, basket, payment_processor_response)
+        except PayGateCallbackException:
+            return redirect(self.payment_processor.error_url)
 
         return redirect(receipt_url)
 
