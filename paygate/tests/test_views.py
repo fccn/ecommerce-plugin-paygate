@@ -366,3 +366,42 @@ class PayGateCallbackTests(TestCase):
         order = Order.objects.all().first()
         self.assertEqual(order.basket.id, basket.id)
         self.assertTrue(len(Order.objects.all()) == 1)
+
+    @mock.patch.object(PayGate, "_make_api_json_request")
+    def test_callback_server_duc(self, mock__make_api_json_request):
+        """
+        Test the server-to-server callback with a DUC payment.
+        """
+        # create data for test
+        course = CourseFactory(id='a/b/c', name='Demo Course', partner=self.partner)
+        course.save()
+        product = course.create_or_update_seat('test-certificate-type', False, 20)
+        product.save()
+        basket = create_basket(site=self.site, owner=UserFactory(), empty=True)
+        basket.add_product(product)
+        basket.save()
+
+        # mock the call to PayGate to double-check if it's being payed
+        mock__make_api_json_request.return_value = [{
+            "MERCHANT_CODE": "NAU",
+            "STATUS_CODE": "C",
+            "PAYMENT_REF": basket.order_number,
+            "PAYMENT_AMOUNT": "20.00",
+            "TRANSACTION_ID": "123415432432432",
+            "CARD_MASKED_PAN": None,
+            "PAYMENT_TYPE_CODE": "DUC",
+        }]
+
+        callback_server_data = {
+            'payment_ref': basket.order_number,
+        }
+        response = self.client.post(
+            reverse("ecommerce_plugin_paygate:callback_server"),
+            data=json.dumps(callback_server_data),
+            content_type='application/json'
+        )
+        self.assertContains(response, "Received server callback with success")
+
+        order = Order.objects.all().first()
+        self.assertEqual(order.basket.id, basket.id)
+        self.assertTrue(len(Order.objects.all()) == 1)
