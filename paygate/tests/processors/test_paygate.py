@@ -110,7 +110,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 ],
             },
             basket=self.basket,
-            timeout=10,
+            timeout=20,
             basic_auth_user="NAU",
             basic_auth_pass="APassword",
         )
@@ -188,7 +188,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 ],
             },
             basket=self.basket,
-            timeout=10,
+            timeout=20,
             basic_auth_user="NAU",
             basic_auth_pass="APassword",
         )
@@ -247,7 +247,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 "OFFSET_ROWS": 0,
             },
             basket=self.basket,
-            timeout=10,
+            timeout=20,
             basic_auth_user="NAU",
             basic_auth_pass="APassword",
         )
@@ -298,7 +298,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 "FROM_DATETIME": start.isoformat(),
                 "TO_DATETIME": end.isoformat(),
             },
-            timeout=10,
+            timeout=20,
             basic_auth_user="NAU",
             basic_auth_pass="APassword",
         )
@@ -312,7 +312,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 # so we can differentiate on the PaymentProcessorResponse object
                 "retry_baskets_payed_in_paygate": "true",
             },
-            timeout=10,
+            timeout=30,
         )
 
     @mock.patch.object(
@@ -338,7 +338,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 "PAYMENT_REF": self.basket.order_number,
             },
             basket=self.basket,
-            timeout=10,
+            timeout=30,
             basic_auth_user="NAU",
             basic_auth_pass="APassword",
         )
