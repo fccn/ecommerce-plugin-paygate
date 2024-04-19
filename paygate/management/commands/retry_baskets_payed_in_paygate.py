@@ -15,6 +15,9 @@ log = logging.getLogger(__name__)
 class Command(BaseCommand):
     """
     Command that retries to receive the missing server callbacks from PayGate.
+
+    Example to retry last 24 hours:
+      python manage.py retry_baskets_payed_in_paygate --delta_in_minutes=1440
     """
 
     help = """retries to receive the missing server callbacks from PayGate."""
