@@ -471,7 +471,7 @@ class PayGate(BasePaymentProcessor):
             basic_auth_pass=self.api_basic_auth_pass,
         )
         logger.info(
-            "Search Transactions on PayGate received the response data: [%s]",
+            "Search Transactions on PayGate received the response data: %s",
             search_response_data,
         )
         confirmed_payed_on_paygate = False
@@ -505,13 +505,15 @@ class PayGate(BasePaymentProcessor):
         # Save only a mask of the card
         card_number = paygate_transaction.get("CARD_MASKED_PAN", card_type)
 
-        return HandledProcessorResponse(
+        hpr = HandledProcessorResponse(
             transaction_id=transaction_id,
             total=total,
             currency=currency,
             card_number=card_number,
             card_type=card_type,
         )
+        logger.info("HandledProcessorResponse is %s", hpr)
+        return hpr
 
     def issue_credit(
         self, order_number, basket, reference_number, amount, currency
