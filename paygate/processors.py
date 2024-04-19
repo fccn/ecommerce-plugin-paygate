@@ -94,16 +94,16 @@ class PayGate(BasePaymentProcessor):
 
     DEFAULT_API_CHECKOUT_URL = "https://lab.optimistic.blue/paygateWS/api/CheckOut"
     # the default timeout that we wait to have a response of the PayGate Checkout API method
-    DEFAULT_API_CHECKOUT_REQUEST_TIMEOUT_SECONDS = 10
+    DEFAULT_API_CHECKOUT_REQUEST_TIMEOUT_SECONDS = 20
 
     DEFAULT_API_BACK_SEARCH_TRANSACTIONS = (
         "https://lab.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions"
     )
-    DEFAULT_API_BACK_SEARCH_TRANSACTIONS_TIMEOUT_SECONDS = 10
-    DEFAULT_RETRY_CALLBACK_SUCCESS_TIMEOUT_SECONDS = 10
+    DEFAULT_API_BACK_SEARCH_TRANSACTIONS_TIMEOUT_SECONDS = 20
+    DEFAULT_RETRY_CALLBACK_SUCCESS_TIMEOUT_SECONDS = 30
 
     DEFAULT_MARK_TEST_PAYMENT_AS_PAID_URL = "https://lab.optimistic.blue/paygateWS/api/MarkTestPaymentAsPaid"
-    DEFAULT_MARK_TEST_PAYMENT_AS_PAID_REQUEST_TIMEOUT_SECONDS = 10
+    DEFAULT_MARK_TEST_PAYMENT_AS_PAID_REQUEST_TIMEOUT_SECONDS = 30
 
     def __init__(self, site):
         """
