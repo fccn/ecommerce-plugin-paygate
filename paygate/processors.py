@@ -251,9 +251,8 @@ class PayGate(BasePaymentProcessor):
 
         callback_server_parms = []
 
-        single_seat = self.get_single_seat(basket)
-        if single_seat:
-            course_id = single_seat.course_id
+        course_ids_on_basked = self.get_course_ids(basket)
+        course_id = course_ids_on_basked[0] if len(course_ids_on_basked) == 1 else None
 
         # include course_id on the callback server params
         if course_id:
@@ -393,23 +392,18 @@ class PayGate(BasePaymentProcessor):
         return value
 
     @staticmethod
-    def get_single_seat(basket):
+    def get_course_ids(basket):
         """
         Return the first product encountered in the basket with the product
         class of 'seat'.  Return None if no such products were found.
         """
-        try:
-            seat_class = ProductClass.objects.get(slug="seat")
-        except ProductClass.DoesNotExist:
-            # this occurs in test configurations where the seat product class is not in use
-            return None
-
+        course_ids = []
         for line in basket.lines.all():
             product = line.product
-            if product.get_product_class() == seat_class:
-                return product
+            if product.course_id and product.course_id not in course_ids:
+                course_ids.append(product.course_id)
 
-        return None
+        return course_ids
 
     def handle_processor_response(self, response, basket=None):
         """
