@@ -11,7 +11,21 @@ jobs:
   ci:
     name: Run tests and linting
     runs-on: ubuntu-latest
-    
+
+    strategy:
+      matrix:
+        include:
+          - ecommerce_repository: fccn/ecommerce
+            ecommerce_ref: nau/nutmeg.master
+            # Requested celery==4.4.7 from https://files.......... (from -r ecommerce/requirements/dev.txt (line 73)) has invalid metadata: Expected matching RIGHT_PARENTHESIS for LEFT_PARENTHESIS, after version specifier
+            #     pytz (>dev)
+            #         ~^
+            # Please use pip<24.1 if you need to use this version.
+            pip_constraint: pip<24.1
+          # - ecommerce_repository: openedx/ecommerce
+          #   ecommerce_ref: open-release/redwood.master
+          #   pip_constraint: 
+
     steps:
       - name: Checkout PayGate
         uses: actions/checkout@v4
@@ -23,18 +37,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           # Repository name with owner
-          repository: fccn/ecommerce
+          repository: ${{ matrix.ecommerce_repository }}
           # Change the branch to checkout
-          ref: nau/nutmeg.master
+          ref: ${{ matrix.ecommerce_ref }}
           # Relative path to place the repository
           path: ecommerce
     
       - name: Use Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.8'
           cache: 'pip' # caching pip dependencies
-      
+
+      - name: Install specific pip version
+        if: "${{ matrix.pip_constraint != '' }}"
+        run: pip install "${{ matrix.pip_constraint }}"
+
       - name: Install ecommerce pip requirements
         run: pip install -r ecommerce/requirements/dev.txt
 
