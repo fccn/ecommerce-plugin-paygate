@@ -22,9 +22,11 @@ jobs:
             #         ~^
             # Please use pip<24.1 if you need to use this version.
             pip_constraint: pip<24.1
-          # - ecommerce_repository: openedx/ecommerce
-          #   ecommerce_ref: open-release/redwood.master
-          #   pip_constraint: 
+            python_version: 3.8
+          - ecommerce_repository: fccn/ecommerce
+            ecommerce_ref: nau/redwood.master
+            pip_constraint: 
+            python_version: 3.12.2
 
     steps:
       - name: Checkout PayGate
@@ -46,7 +48,7 @@ jobs:
       - name: Use Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: '${{ matrix.python_version }}'
           cache: 'pip' # caching pip dependencies
 
       - name: Install specific pip version
