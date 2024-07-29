@@ -1,6 +1,7 @@
 import json
 
 import mock
+from django.conf import settings
 from django.test import override_settings
 from django.urls import reverse
 from oscar.core.loading import get_model
@@ -38,16 +39,18 @@ class PayGateCallbackTests(TestCase):
     @override_settings(
         PAYMENT_PROCESSOR_CONFIG={
             "edx": {
-                "paygate": {
-                    "access_token": "PwdX_XXXX_YYYY",
-                    "merchant_code": "NAU",
-                    "api_checkout_url": "https://test.optimistic.blue/paygateWS/api/CheckOut",
-                    "api_back_search_transactions":
-                        "https://test.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions",
-                    "api_basic_auth_user": "NAU",
-                    "api_basic_auth_pass": "APassword",
-                    "cancel_checkout_path": "/another/path",
-                }
+                **settings.PAYMENT_PROCESSOR_CONFIG["edx"],
+                **{
+                    "paygate": {
+                        "access_token": "PwdX_XXXX_YYYY",
+                        "merchant_code": "NAU",
+                        "api_checkout_url": "https://test.optimistic.blue/paygateWS/api/CheckOut",
+                        "api_back_search_transactions": "https://test.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions",
+                        "api_basic_auth_user": "NAU",
+                        "api_basic_auth_pass": "APassword",
+                        "cancel_checkout_path": "/another/path",
+                    }
+                },
             }
         }
     )
@@ -75,15 +78,18 @@ class PayGateCallbackTests(TestCase):
     @override_settings(
         PAYMENT_PROCESSOR_CONFIG={
             "edx": {
-                "paygate": {
-                    "access_token": "PwdX_XXXX_YYYY",
-                    "merchant_code": "NAU",
-                    "api_checkout_url": "https://test.optimistic.blue/paygateWS/api/CheckOut",
-                    "api_back_search_transactions": "https://test.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions",
-                    "api_basic_auth_user": "NAU",
-                    "api_basic_auth_pass": "APassword",
-                    "error_path": "/some/error/custom/path",
-                }
+                **settings.PAYMENT_PROCESSOR_CONFIG["edx"],
+                **{
+                    "paygate": {
+                        "access_token": "PwdX_XXXX_YYYY",
+                        "merchant_code": "NAU",
+                        "api_checkout_url": "https://test.optimistic.blue/paygateWS/api/CheckOut",
+                        "api_back_search_transactions": "https://test.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions",
+                        "api_basic_auth_user": "NAU",
+                        "api_basic_auth_pass": "APassword",
+                        "error_path": "/some/error/custom/path",
+                    }
+                },
             }
         }
     )
@@ -109,15 +115,18 @@ class PayGateCallbackTests(TestCase):
     @override_settings(
         PAYMENT_PROCESSOR_CONFIG={
             "edx": {
-                "paygate": {
-                    "access_token": "PwdX_XXXX_YYYY",
-                    "merchant_code": "NAU",
-                    "api_checkout_url": "https://test.optimistic.blue/paygateWS/api/CheckOut",
-                    "api_back_search_transactions": "https://test.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions",
-                    "api_basic_auth_user": "NAU",
-                    "api_basic_auth_pass": "APassword",
-                    "callback_server_allowed_networks": ["10.0.10.1"],
-                }
+                **settings.PAYMENT_PROCESSOR_CONFIG["edx"],
+                **{
+                    "paygate": {
+                        "access_token": "PwdX_XXXX_YYYY",
+                        "merchant_code": "NAU",
+                        "api_checkout_url": "https://test.optimistic.blue/paygateWS/api/CheckOut",
+                        "api_back_search_transactions": "https://test.optimistic.blue/paygateWS/api/BackOfficeSearchTransactions",
+                        "api_basic_auth_user": "NAU",
+                        "api_basic_auth_pass": "APassword",
+                        "callback_server_allowed_networks": ["10.0.10.1"],
+                    }
+                },
             }
         }
     )
