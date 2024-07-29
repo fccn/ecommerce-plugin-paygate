@@ -6,9 +6,9 @@ from django.test import override_settings
 from django.urls import reverse
 from oscar.core.loading import get_model
 from paygate.processors import PayGate
+from paygate.utils import get_receipt_page_url
 
 from ecommerce.courses.tests.factories import CourseFactory
-from ecommerce.extensions.checkout.utils import get_receipt_page_url
 from ecommerce.extensions.test.factories import create_basket, create_order
 from ecommerce.tests.factories import UserFactory
 from ecommerce.tests.testcases import TestCase
@@ -280,9 +280,8 @@ class PayGateCallbackTests(TestCase):
         )
 
         receipt_url = get_receipt_page_url(
-            self.request.site.siteconfiguration,
+            self.request,
             order_number=basket.order_number,
-            disable_back_button=True,
         )
         self.assertEqual(receipt_url, response['Location'])
 
@@ -327,9 +326,8 @@ class PayGateCallbackTests(TestCase):
         )
 
         receipt_url = get_receipt_page_url(
-            self.request.site.siteconfiguration,
+            self.request,
             order_number=basket.order_number,
-            disable_back_button=True,
         )
         self.assertEqual(receipt_url, response['Location'])
 

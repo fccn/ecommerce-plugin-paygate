@@ -17,9 +17,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 from oscar.apps.payment.exceptions import PaymentError
 from oscar.core.loading import get_class, get_model
+from paygate.utils import get_receipt_page_url
 
 from ecommerce.extensions.checkout.mixins import EdxOrderPlacementMixin
-from ecommerce.extensions.checkout.utils import get_receipt_page_url
 
 from .ip import allowed_client_ip, get_client_ip
 from .processors import PayGate
@@ -243,9 +243,8 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
             return redirect(self.payment_processor.failure_url)
 
         receipt_url = get_receipt_page_url(
-            self.request.site.siteconfiguration,
+            self.request,
             order_number=basket.order_number,
-            disable_back_button=True,
         )
 
         try:
