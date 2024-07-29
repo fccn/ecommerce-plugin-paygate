@@ -22,9 +22,9 @@ jobs:
             #         ~^
             # Please use pip<24.1 if you need to use this version.
             pip_constraint: pip<24.1
-          # - ecommerce_repository: openedx/ecommerce
-          #   ecommerce_ref: open-release/redwood.master
-          #   pip_constraint: 
+          - ecommerce_repository: fccn/ecommerce
+            ecommerce_ref: nau/redwood.master
+            pip_constraint: 
 
     steps:
       - name: Checkout PayGate
