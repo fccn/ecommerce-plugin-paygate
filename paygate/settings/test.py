@@ -36,5 +36,9 @@ EXTRA_PAYMENT_PROCESSOR_URLS = {"paygate": "paygate.urls"}
 
 OSCAR_DEFAULT_CURRENCY = 'EUR'
 
-# Change the default ecommerce/settings/test.py setting so we can view more easy the test problems.
+# Change the default ecommerce/settings/test.py setting so we don't have to collect the static files prior to running the tests.
+# And fix different compressable errors like: UncompressableFileError
 COMPRESS_ENABLED = False
+COMPRESS_OFFLINE = False
+COMPRESS_PRECOMPILERS = ()
+COMPRESS_CSS_FILTERS = []
