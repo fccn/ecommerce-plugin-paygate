@@ -23,7 +23,7 @@ jobs:
             # Please use pip<24.1 if you need to use this version.
             pip_constraint: pip<24.1
           - ecommerce_repository: fccn/ecommerce
-            ecommerce_ref: nau/redwood.master
+            ecommerce_ref: nau/teak.master
             pip_constraint: 
 
     steps:
@@ -55,6 +55,11 @@ jobs:
 
       - name: Install ecommerce pip requirements
         run: pip install -r ecommerce/requirements/dev.txt
+
+      - name: Install missing test dependencies
+        run: |
+          # Provides `user_util` required by ecommerce during URL import in tests
+          pip install user-util
 
       - name: Install paygate
         run: pip install -e ecommerce-plugin-paygate
