@@ -275,7 +275,7 @@ class PayGate(BasePaymentProcessor):
             # "STATE": basket.order.billing_address.state,
             # "COUNTRY_CODE": basket.order.billing_address.country,
             "EMAIL": basket.owner.email,
-            "LANGUAGE": request.LANGUAGE_CODE.split("-")[0],
+            "LANGUAGE": request.LANGUAGE_CODE.split("-")[0].upper(),
             # "WIDGET_MESSAGE": "string", # old field no longer in use.
             "PAYMENT_REF": basket.order_number,  # Identification of transaction
             "TRANSACTION_DESC": "\n".join(
