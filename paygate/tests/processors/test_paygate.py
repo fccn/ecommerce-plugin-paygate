@@ -62,7 +62,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 "PaymentID": 1234,
             },
         ) as mock__make_api_json_request:
-            self.request.LANGUAGE_CODE = "en"
+            self.request.LANGUAGE_CODE = "EN"
             self.assertEqual(
                 self.processor.get_transaction_parameters(
                     self.basket, request=self.request
@@ -84,7 +84,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 "IS_RECURRENT": False,
                 "CLIENT_NAME": self.user.full_name,
                 "EMAIL": self.user.email,
-                "LANGUAGE": "en",
+                "LANGUAGE": "EN",
                 "PAYMENT_REF": "EDX-100001",
                 "TRANSACTION_DESC": "Seat in Demo Course with test-certificate-type certificate",
                 "CURRENCY": "EUR",
@@ -140,7 +140,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 "PaymentID": None,
             },
         ) as mock__make_api_json_request:
-            self.request.LANGUAGE_CODE = "en"
+            self.request.LANGUAGE_CODE = "EN"
             self.assertEqual(
                 self.processor.get_transaction_parameters(
                     self.basket, request=self.request
@@ -162,7 +162,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 "IS_RECURRENT": False,
                 "CLIENT_NAME": self.user.full_name,
                 "EMAIL": self.user.email,
-                "LANGUAGE": "en",
+                "LANGUAGE": "EN",
                 "PAYMENT_REF": "EDX-100001",
                 "TRANSACTION_DESC": "Seat in Demo Course with test-certificate-type certificate",
                 "CURRENCY": "EUR",
@@ -216,7 +216,7 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
                 }
             ],
         ) as mock__make_api_json_request:
-            self.request.LANGUAGE_CODE = "en"
+            self.request.LANGUAGE_CODE = "EN"
             self.assertEqual(
                 self.processor.handle_processor_response(
                     # response data is ignored
