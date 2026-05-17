@@ -14,9 +14,10 @@ from django.conf import settings
 from django.urls import reverse
 from oscar.apps.payment.exceptions import GatewayError
 from oscar.core.loading import get_class, get_model
-from paygate.utils import get_basket_from_payment_ref, order_exist
+from paygate.utils import get_basket_from_payment_ref, get_order
 
 from ecommerce.core.url_utils import get_ecommerce_url
+from ecommerce.extensions.fulfillment.status import ORDER
 from ecommerce.extensions.payment.processors import (BasePaymentProcessor,
                                                      HandledProcessorResponse)
 
@@ -210,6 +211,29 @@ class PayGate(BasePaymentProcessor):
                 "cancel_checkout_path", reverse("checkout:cancel-checkout")
             )
         )
+
+    @property
+    def thank_you_url(self):
+        """
+        The destination Thank-You page URL where the user is redirected after the PayGate
+        redirects him back to the Open edX Ecommerce success callback.
+
+        This URL replaces the previous behaviour of synchronously running
+        `handle_payment_and_create_order` on the success callback, which was failing for
+        asynchronous payments (MB) because the upstream payment is not yet confirmed
+        when the user comes back. The Thank-You page is part of the ecommerce
+        micro-frontend and links to the user's Order History page, where the payment
+        status is then lazily resolved per order.
+
+        Configure it by setting `thank_you_url` on the payment processor configuration,
+        for example:
+
+            thank_you_url: https://lms.example.com/orders/thank-you
+
+        When it is not set this returns ``None`` and the success callback falls back to
+        the previous receipt page behaviour, so existing deployments do not regress.
+        """
+        return self.configuration.get("thank_you_url", None)
 
     def get_transaction_parameters(
         self, basket, request=None, use_client_side_checkout=False, **kwargs
@@ -652,7 +676,8 @@ class PayGate(BasePaymentProcessor):
                 logger.warning("Can't find Basket for payment_ref=%s", payment_ref)
                 continue
 
-            if order_exist(basket):
+            order = get_order(basket)
+            if order and order.status != ORDER.PENDING:
                 logger.info("Order already exists for payment_ref=%s", payment_ref)
                 continue
 

@@ -7,8 +7,9 @@ import json
 import logging
 import traceback
 from json.decoder import JSONDecodeError
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import (HttpResponse, HttpResponseNotAllowed,
                          HttpResponseServerError)
 from django.shortcuts import redirect
@@ -20,10 +21,12 @@ from oscar.core.loading import get_class, get_model
 from paygate.utils import get_receipt_page_url
 
 from ecommerce.extensions.checkout.mixins import EdxOrderPlacementMixin
+from ecommerce.extensions.fulfillment.status import ORDER
 
 from .ip import allowed_client_ip, get_client_ip
+from .pending_orders import confirm_pending_order, place_pending_order
 from .processors import PayGate
-from .utils import get_basket_from_payment_ref, order_exist
+from .utils import get_basket_from_payment_ref, get_order
 
 logger = logging.getLogger(__name__)
 
@@ -101,12 +104,25 @@ class PayGateCallbackBaseResponseView(
             logger.warning("Missing 'payment_ref' parameter from request")
         return basket, ppr
 
-    def handle_payment_and_create_order(self, request, basket, payment_processor_response):
+    def handle_payment_and_create_order(self, basket, payment_processor_response):
         """
-        Handle payment and if need create_order
+        Handle payment and, if needed, create the order.
+
+        Three cases are handled:
+
+        * There is already a `Pending` order for the basket, because the user came
+          back from PayGate through the success callback before the payment was
+          confirmed. The payment is recorded against that existing order and the
+          order is fulfilled.
+        * There is already an order in any other status. This is a duplicated
+          server callback and is ignored.
+        * There is no order yet, which is the classic synchronous flow: handle the
+          payment, create the order and fulfil it.
         """
-        if order_exist(basket):
-            # the basket already contains an order.
+        existing_order = get_order(basket)
+
+        if existing_order and existing_order.status != ORDER.PENDING:
+            # the basket already contains a fulfilled order.
             # we could receive duplicated server callbacks.
             logger.warning(
                 "PayGate callback the basket already has an order for basket [%d]",
@@ -115,9 +131,24 @@ class PayGateCallbackBaseResponseView(
             return False
 
         try:
+            if existing_order:
+                # An asynchronous payment (e.g. a Multibanco reference) that has
+                # now been paid. Confirm the pending order that was placed when
+                # the user returned from PayGate.
+                confirm_pending_order(
+                    self.request,
+                    basket,
+                    existing_order,
+                    payment_processor_response.response,
+                )
+                return True
+
             # This method have to be invoked in order to handle a payment,
             # this method could raise an PaymentError exception.
             self.handle_payment(payment_processor_response.response, basket)
+
+            order = self.create_new_order(self.request, basket)
+            self.run_post_order(basket, order)
         except PaymentError as exc:
             logger.exception(
                 "PayGate server callback error while handling payment with a payment error for basket [%d]",
@@ -126,6 +157,10 @@ class PayGateCallbackBaseResponseView(
             raise PayGateCallbackException(
                 "Error while handling payment - payment error"
             ) from exc
+        except PayGateCallbackException:
+            # Already logged and already the right exception type; let it through
+            # untouched instead of wrapping it in itself.
+            raise
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception(
                 "PayGate server callback error while handling payment with another error for basket [%d]",
@@ -134,9 +169,14 @@ class PayGateCallbackBaseResponseView(
             logger.error(traceback.format_exc())
             raise PayGateCallbackException("Error while handling payment - other error") from exc
 
-        # create an order for the basket
+        return True
+
+    def create_new_order(self, request, basket):
+        """
+        Create an order for the basket.
+        """
         try:
-            order = self.create_order(request, basket)
+            return self.create_order(request, basket)
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception(
                 "PayGate server callback error while creating order for basket [%d]",
@@ -144,7 +184,14 @@ class PayGateCallbackBaseResponseView(
             )
             raise PayGateCallbackException("Error while creating order") from exc
 
-        # post order
+    def run_post_order(self, basket, order):
+        """
+        Run the post-order actions, swallowing any error.
+
+        Note that this is deliberately *not* called `handle_post_order`: that name
+        belongs to `EdxOrderPlacementMixin` and overriding it here would shadow the
+        implementation this method calls.
+        """
         try:
             self.handle_post_order(order)
         except Exception:  # pylint: disable=broad-except
@@ -211,7 +258,7 @@ class PayGateCallbackServerResponseView(PayGateCallbackBaseResponseView):
             )
 
         try:
-            self.handle_payment_and_create_order(request, basket, payment_processor_response)
+            self.handle_payment_and_create_order(basket, payment_processor_response)
         except PayGateCallbackException as exp:
             return HttpResponseServerError(str(exp))
 
@@ -222,11 +269,37 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
     """
     This view is used by the PayGate frontend to redirect the user after he has payed with
     success.
-    This callback should NOT be used to fullfill the order.
 
-    Internally this method will call the BackOfficeSearchTransactions to double check that the
-    transaction is really payed. With this design decision we don't need to protect the
-    callbacks URLs by IP.
+    ``thank_you_url`` is an on/off switch for the whole asynchronous flow, not merely a
+    choice of redirect destination. It exists so the flow is only enabled on a deployment
+    that has already rolled out the Thank-You page, and it changes the behaviour of this
+    view for *every* payment method at once, cards included:
+
+    * **Without** ``thank_you_url``: the previous behaviour, unchanged. The payment is
+      handled synchronously, the order is created and fulfilled, and the user is sent to
+      the receipt page. This calls ``handle_processor_response``, so for an asynchronous
+      payment method it still raises a ``GatewayError`` and shows the payment error page.
+      That is the bug the flag fixes, kept as-is while the flag is off.
+
+    * **With** ``thank_you_url``: this view never takes payment, for any payment type.
+      It records the callback response, makes sure an order exists for the basket --
+      placing a ``Pending`` one when the server-to-server callback has not already
+      created a fulfilled order -- and redirects to the Thank-You page. No deployment
+      gets synchronous fulfilment here once the flag is set.
+
+    Treating every payment method the same is deliberate. The destination after a payment
+    provider does not depend on how the learner paid; only the speed of the confirmation
+    does, and a card is simply confirmed sooner than a Multibanco reference. Branching on
+    the payment type would also misclassify MBWAY, which is asynchronous in practice
+    because the payer has to approve it on a phone.
+
+    A ``Pending`` order is not fulfilled and carries no payment record. It is resolved
+    against PayGate by whichever of these happens first: the server-to-server callback,
+    the ``retry_baskets_payed_in_paygate`` management command (which re-fires that
+    callback for completed transactions we have not recorded, and deliberately does not
+    skip ``Pending`` orders), or the learner opening the Order History page, which hits
+    ``nau_extensions.OrderPaymentStatusView``. Fulfilment therefore never depends on a
+    single one of those landing.
     """
 
     def get(
@@ -242,17 +315,98 @@ class PayGateCallbackSuccessResponseView(PayGateCallbackBaseResponseView):
             logger.warning("PayGate no basket found on the callback success")
             return redirect(self.payment_processor.failure_url)
 
-        receipt_url = get_receipt_page_url(
-            self.request,
-            order_number=basket.order_number,
-        )
+        thank_you_url = self.payment_processor.thank_you_url
+        if not thank_you_url:
+            return self.fulfil_synchronously(basket, payment_processor_response)
 
+        order = self.get_or_place_pending_order(basket, payment_processor_response)
+        if order is None:
+            return redirect(self.payment_processor.error_url)
+
+        parsed = urlparse(thank_you_url)
+        query = dict(parse_qsl(parsed.query))
+        query["order_number"] = order.number
+        return redirect(urlunparse(parsed._replace(query=urlencode(query))))
+
+    def fulfil_synchronously(self, basket, payment_processor_response):
+        """
+        The behaviour of this view before the asynchronous flow existed, kept for the
+        deployments that have not configured a `thank_you_url` yet: handle the payment,
+        create and fulfil the order, and send the user to the receipt page.
+        """
         try:
-            self.handle_payment_and_create_order(request, basket, payment_processor_response)
+            self.handle_payment_and_create_order(basket, payment_processor_response)
         except PayGateCallbackException:
             return redirect(self.payment_processor.error_url)
 
-        return redirect(receipt_url)
+        return redirect(
+            get_receipt_page_url(self.request, order_number=basket.order_number)
+        )
+
+    @staticmethod
+    def get_payment_type_code(payment_processor_response):
+        """
+        The PayGate payment type (`VISA`, `REFMB`, `MBWAY`, ...) of a recorded callback,
+        or None when it is missing. Only used for logging, so it never raises.
+        """
+        response = getattr(payment_processor_response, "response", None) or {}
+        return response.get("payment_type_code")
+
+    def get_or_place_pending_order(self, basket, payment_processor_response=None):
+        """
+        Return the `Order` of `basket`, placing a `Pending` one if it does not exist yet.
+
+        Arguments:
+            basket (Basket): the basket the user has just paid for.
+            payment_processor_response (PaymentProcessorResponse): the recorded PayGate
+                callback, used only to enrich the logs of a failed placement.
+
+        Returns:
+            Order: the existing or newly placed order, or None when it could not be
+                placed and the caller should send the user to the error page.
+        """
+        order = get_order(basket)
+        if order:
+            logger.info(
+                "PayGate success callback for basket [%d]: order [%s] already exists with status [%s]",
+                basket.id,
+                order.number,
+                order.status,
+            )
+            return order
+
+        try:
+            return place_pending_order(self.request, basket)
+        except IntegrityError:
+            logger.info(
+                "PayGate success callback for basket [%d]: the order was created "
+                "concurrently by the server callback",
+                basket.id,
+            )
+        except Exception:  # pylint: disable=broad-except
+            logger.exception(
+                "PayGate success callback could not place a pending order for basket [%d], "
+                "payment type [%s], total [%s]",
+                basket.id,
+                self.get_payment_type_code(payment_processor_response),
+                basket.total_incl_tax,
+            )
+
+        order = get_order(basket)
+        if order is None:
+            logger.error(
+                "PayGate success callback has no order for basket [%d]", basket.id
+            )
+            return None
+
+        logger.info(
+            "PayGate success callback for basket [%d]: continuing with order [%s] "
+            "in status [%s]",
+            basket.id,
+            order.number,
+            order.status,
+        )
+        return order
 
 
 class PayGateCallbackRedirectResponseView(PayGateCallbackBaseResponseView):

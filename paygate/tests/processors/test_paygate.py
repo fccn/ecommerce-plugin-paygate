@@ -7,9 +7,11 @@ import requests
 from paygate.processors import PayGate
 from paygate.tests.factories import MockResponse
 
+from ecommerce.extensions.fulfillment.status import ORDER
 from ecommerce.extensions.payment.processors import HandledProcessorResponse
 from ecommerce.extensions.payment.tests.processors.mixins import \
     PaymentProcessorTestCaseMixin
+from ecommerce.extensions.test.factories import create_order
 from ecommerce.tests.factories import UserFactory
 from ecommerce.tests.testcases import TestCase
 
@@ -257,6 +259,77 @@ class PayGateTests(PaymentProcessorTestCaseMixin, TestCase):
 
     def test_issue_credit_error(self):
         pass
+
+    @mock.patch.object(
+        requests,
+        "post",
+        return_value=MockResponse(
+            status_code=200,
+        ),
+    )
+    def test_retry_baskets_payed_in_paygate_retries_a_pending_order(
+        self, mock_ecommerce_response,
+    ):
+        """
+        The asynchronous flow places a `Pending` order for every basket that comes
+        back through the success callback, so "the basket already has an order" no
+        longer means "there is nothing to retry". A basket whose only order is
+        `Pending` is exactly the one this command exists to rescue when the
+        server-to-server callback never landed, and it must still be retried.
+        """
+        order = create_order(basket=self.basket, user=self.user)
+        order.status = ORDER.PENDING
+        order.save()
+
+        with mock.patch.object(
+            PayGate,
+            "_make_api_json_request",
+            return_value=[
+                {
+                    "MERCHANT_CODE": "NAU",
+                    "STATUS_CODE": "C",
+                    "PAYMENT_REF": self.basket.order_number,
+                }
+            ],
+        ):
+            self.processor.retry_baskets_payed_in_paygate(
+                datetime.now(), datetime.now() - timedelta(minutes=5), next_rows=2
+            )
+
+        mock_ecommerce_response.assert_called_once()
+
+    @mock.patch.object(
+        requests,
+        "post",
+        return_value=MockResponse(
+            status_code=200,
+        ),
+    )
+    def test_retry_baskets_payed_in_paygate_skips_a_fulfilled_order(
+        self, mock_ecommerce_response,
+    ):
+        """
+        A basket that already has a real, non-`Pending` order is paid and fulfilled,
+        so the callback must not be fired again for it.
+        """
+        create_order(basket=self.basket, user=self.user)
+
+        with mock.patch.object(
+            PayGate,
+            "_make_api_json_request",
+            return_value=[
+                {
+                    "MERCHANT_CODE": "NAU",
+                    "STATUS_CODE": "C",
+                    "PAYMENT_REF": self.basket.order_number,
+                }
+            ],
+        ):
+            self.processor.retry_baskets_payed_in_paygate(
+                datetime.now(), datetime.now() - timedelta(minutes=5), next_rows=2
+            )
+
+        mock_ecommerce_response.assert_not_called()
 
     @mock.patch.object(
         requests,

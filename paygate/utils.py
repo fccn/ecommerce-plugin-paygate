@@ -13,11 +13,12 @@ Applicator = get_class("offer.applicator", "Applicator")
 OrderNumberGenerator = get_class("order.utils", "OrderNumberGenerator")
 
 
-def order_exist(basket: Basket) -> bool:
+def get_order(basket: Basket):
     """
-    Utility method that check if there is an Order for the Basket
+    Utility method that returns the Order for the Basket, or None if the basket
+    has not been ordered yet.
     """
-    return Order.objects.filter(number=basket.order_number).exists()
+    return Order.objects.filter(number=basket.order_number).first()
 
 
 def get_basket(basket_id, request=None):
